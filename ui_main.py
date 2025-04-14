@@ -217,7 +217,7 @@ class FeatureAnalysisPage(QWidget):
         stock_code = item.stock_code
         
         # 从DataManager获取完整数据
-        df = self.data_mgr.get_stock_data(stock_code)
+        df = self.data_mgr.get_stock_weekly_data(stock_code)
         
         # 调用特征分析方法
         analyzer = FeatureAnalyzer()
@@ -228,7 +228,7 @@ class FeatureAnalysisPage(QWidget):
         self.figure1.clear()
         ax1 = self.figure1.add_subplot(111)
         ax1.plot(df['Close'], label='收盘价')
-        ax1.set_title(f'成长性分析 - {stock_code}')
+        ax1.set_title(f'成长性分析 - {growth_score:.2f}')
         ax1.legend()
         self.canvas1.draw()
         
@@ -236,10 +236,15 @@ class FeatureAnalysisPage(QWidget):
         self.figure2.clear()
         ax2 = self.figure2.add_subplot(111)
         ax2.plot(df['Close'], label='原始价格')
-        ax2.plot(stability_data['upper_env'], 'g--', label='上轨道')
-        ax2.plot(stability_data['lower_env'], 'r--', label='下轨道')
-        ax2.scatter(stability_data['peaks'], df['Close'].iloc[stability_data['peaks']], marker='^', color='g')
-        ax2.scatter(stability_data['valleys'], df['Close'].iloc[stability_data['valleys']], marker='v', color='r')
+        ax2.plot(df.index, stability_data['filtered'], 'g--', label='包络线')
+        #ax2.plot(df.index, stability_data['filtered'], 'g--', label='上轨道')  # 添加日期索引
+        #ax2.plot(df.index, stability_data['lower_env'], 'r--', label='下轨道')  # 添加日期索引
+        ax2.scatter(df.index[stability_data['peaks']],  # 使用日期索引
+                   df['Close'].iloc[stability_data['peaks']], 
+                   marker='^', color='g')
+        ax2.scatter(df.index[stability_data['valleys']],  # 使用日期索引
+                   df['Close'].iloc[stability_data['valleys']],
+                   marker='v', color='r')
         ax2.set_title(f'稳定性分析 - 得分: {stability_data["stability_score"]:.2f}')
         ax2.legend()
         self.canvas2.draw()
