@@ -28,7 +28,8 @@ class StockDataManager:
             CREATE TABLE IF NOT EXISTS stocks_info (
                 code TEXT PRIMARY KEY,
                 market TEXT NOT NULL,
-                added_date TEXT NOT NULL,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
                 last_updated TEXT NOT NULL,
                 data_path TEXT NOT NULL
             )
@@ -44,17 +45,33 @@ class StockDataManager:
             'US': ''         # 美股
         }.get(market, '')
 
-    def download_data(self, codes: List[Tuple[str, str]], period: str = '1y'):
+    def resample_weekly(self, data):
+        """将日线数据重采样为周线数据"""
+        return data.resample('W-FRI').agg({
+            'Open': 'first',
+            'High': 'max',
+            'Low': 'min',
+            'Close': 'last',
+            'Volume': 'sum',
+            'Dividends':'sum',
+            'Stock Splits':'sum'
+        }).dropna()
+
+    def download_data(self, codes: List[Tuple[str, str]]):
         '''下载股票数据并存储'''
         for code, market in codes:
             symbol = code + self._get_symbol_suffix(market)
             try:
                 # 获取yfinance数据
                 stock = yf.Ticker(symbol)
+                start_date = self.config.get('Data', 'start_date')
+                start = datetime.strptime(start_date, '%Y-%m-%d')
+                end = datetime.now()
+                end_date = end.strftime('%Y-%m-%d')
                 
                 # 下载日线和周线数据
-                daily_data = stock.history(period=period, interval='1d')
-                weekly_data = stock.history(period=period, interval='1wk')
+                daily_data = stock.history(start=start, end=end, interval='1d', auto_adjust=True)
+                weekly_data = self.resample_weekly(daily_data)
                 
                 # 保存数据到CSV
                 base_path = os.path.join(self.storage_path, code)
@@ -69,8 +86,8 @@ class StockDataManager:
                 cursor = self.db_conn.cursor()
                 cursor.execute('''
                     INSERT OR REPLACE INTO stocks_info
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (code, market, now, now, base_path))
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (code, market, start_date, end_date, now, base_path))
                 
             except Exception as e:
                 print(f"Failed to download {symbol}: {str(e)}")
@@ -127,24 +144,25 @@ class StockDataManager:
         return [{
             'code': row[0],
             'market': row[1],
-            'added_date': row[2],
-            'last_updated': row[3],
-            'data_path': row[4]
+            'start_date': row[2],
+            'end_date': row[3],
+            'last_updated': row[4],
+            'data_path': row[5]
         } for row in rows]
 
-    def get_stock_data(self, code: str) -> np.ndarray:
+    def get_stock_data(self, code: str):
         '''获取指定股票的日线数据'''
         base_path = os.path.join(self.storage_path, code)
         daily_file = f"{base_path}_daily.csv"
         if not os.path.exists(daily_file):
             raise FileNotFoundError(f"No daily data found for {code}")
 
-        return np.genfromtxt(daily_file, delimiter=',', names=True, dtype=None)
+        return pd.read_csv(daily_file, index_col=0, parse_dates=True)
 
-    def get_stock_weekly_data(self, code: str) -> np.ndarray:
+    def get_stock_weekly_data(self, code: str):
         '''获取指定股票的周线数据'''
         base_path = os.path.join(self.storage_path, code)
         weekly_file = f"{base_path}_weekly.csv"
         if not os.path.exists(weekly_file):
             raise FileNotFoundError(f"No weekly data found for {code}")
-        return np.genfromtxt(weekly_file, delimiter=',', names=True, dtype=None)
+        return pd.read_csv(weekly_file, index_col=0, parse_dates=True)

@@ -1,11 +1,19 @@
 import sys
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout,
-                            QLabel, QPushButton, QFileDialog, QHBoxLayout,QListWidget,QInputDialog,QMessageBox,QListWidgetItem)
+                            QLabel, QPushButton, QFileDialog, QHBoxLayout,QListWidget,QInputDialog,QMessageBox,QListWidgetItem,
+                            QLineEdit,QComboBox,QSplitter)
 from data_manager import StockDataManager
+from feature_analysis import FeatureAnalyzer
+import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
+
+# 设置全局字体为支持中文的字体
+matplotlib.rcParams['font.family'] = ['Songti SC', 'Heiti TC', 'sans-serif']
+matplotlib.rcParams['font.size'] = 9
+matplotlib.rcParams['axes.unicode_minus'] = False  # 正确显示负号
 
 plt.style.use('ggplot')
 plt.rcParams['axes.prop_cycle'] = plt.cycler(color=plt.cm.cividis.colors)
@@ -54,15 +62,28 @@ class DataManagementPage(QWidget):
         
         # 数据操作区域
         control_layout = QHBoxLayout()
-        self.import_btn = QPushButton("导入股票数据")
-        self.update_btn = QPushButton("批量更新数据")
-        self.validate_btn = QPushButton("验证数据完整性")
+        
+        # 输入控件
+        self.code_input = QLineEdit(placeholderText='请输入股票代码')
+        self.market_combo = QComboBox()
+        self.market_combo.addItems(['A-SH', 'A-SZ', 'HK', 'US'])
+        
+        # 按钮
+        self.import_btn = QPushButton("导入数据")
+        self.update_btn = QPushButton("批量更新")
+        self.validate_btn = QPushButton("验证数据")
         
         # 连接信号槽
         self.import_btn.clicked.connect(self._handle_import)
         self.update_btn.clicked.connect(self._handle_bulk_update)
         self.data_manager = StockDataManager()
         
+        # 布局排列
+        control_layout.addWidget(QLabel('代码:'))
+        control_layout.addWidget(self.code_input)
+        control_layout.addWidget(QLabel('市场:'))
+        control_layout.addWidget(self.market_combo)
+        control_layout.addSpacing(20)
         control_layout.addWidget(self.import_btn)
         control_layout.addWidget(self.update_btn)
         control_layout.addWidget(self.validate_btn)
@@ -89,17 +110,21 @@ class DataManagementPage(QWidget):
                 QMessageBox.warning(self, "错误", "删除股票数据失败")
         
     def _handle_import(self):
-        code, ok1 = QInputDialog.getText(self, '输入股票代码', '请输入股票代码:')
-        market, ok2 = QInputDialog.getItem(self, '选择市场', '请选择所属市场:', 
-            ['A-SH', 'A-SZ', 'HK', 'US'], 0, False)
+        code = self.code_input.text().strip()
+        market = self.market_combo.currentText()
         
-        if ok1 and ok2 and code:
-            try:
-                self.data_manager.download_data([(code.strip(), market)])
-                self._refresh_stock_list()
-                QMessageBox.information(self, '成功', '数据导入成功')
-            except Exception as e:
-                QMessageBox.critical(self, '错误', f'导入失败: {str(e)}')
+        if not code:
+            QMessageBox.warning(self, '输入错误', '请输入股票代码')
+            self.code_input.setFocus()
+            return
+        
+        try:
+            self.data_manager.download_data([(code, market)])
+            self._refresh_stock_list()
+            self.code_input.clear()
+            QMessageBox.information(self, '成功', '数据导入成功')
+        except Exception as e:
+            QMessageBox.critical(self, '错误', f'导入失败: {str(e)}')
     
     def _handle_bulk_update(self):
         stocks = self.data_manager.get_all_stocks()
@@ -114,9 +139,7 @@ class DataManagementPage(QWidget):
         stocks = self.data_manager.get_all_stocks()
         self.stock_list.clear()
         for stock in stocks:
-            #self.stock_list.addItem(f"{stock['code']}: {stock['market']}: {stock['last_updated']}")
-            
-            item = QListWidgetItem(f"{stock['code']}\t{stock['market']}\t{stock['last_updated'][:10]}")
+            item = QListWidgetItem(f"{stock['code']}\t{stock['market']}\t{stock['end_date']}")
             item.stock_code = stock['code']
             item.market = stock['market']
             self.stock_list.addItem(item)
@@ -141,21 +164,85 @@ class TrendAnalysisPage(QWidget):
 class FeatureAnalysisPage(QWidget):
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout()
+        main_layout = QVBoxLayout()
         
-        # 双图表布局
+        # 创建水平分割布局
+        splitter = QSplitter()
+        
+        # 左侧股票列表面板
+        left_panel = QWidget()
+        left_layout = QVBoxLayout()
+        self.stock_list = QListWidget()
+        left_layout.addWidget(QLabel("已导入股票列表"))
+        left_layout.addWidget(self.stock_list)
+        left_panel.setLayout(left_layout)
+        
+        # 右侧图表区域
+        right_panel = QWidget()
+        right_layout = QVBoxLayout()
         self.figure1 = Figure(figsize=(8, 4))
         self.canvas1 = FigureCanvasQTAgg(self.figure1)
         self.figure2 = Figure(figsize=(8, 4))
         self.canvas2 = FigureCanvasQTAgg(self.figure2)
+        right_layout.addWidget(self.canvas1)
+        right_layout.addWidget(self.canvas2)
+        right_panel.setLayout(right_layout)
+        
+        splitter.addWidget(left_panel)
+        splitter.addWidget(right_panel)
+        splitter.setSizes([200, 600])
         
         # 控制按钮
         self.analyze_btn = QPushButton("计算特征指标")
         
-        layout.addWidget(self.canvas1)
-        layout.addWidget(self.canvas2)
-        layout.addWidget(self.analyze_btn)
-        self.setLayout(layout)
+        main_layout.addWidget(splitter)
+        main_layout.addWidget(self.analyze_btn)
+        self.setLayout(main_layout)
+        
+        # 初始化数据
+        self.data_mgr = StockDataManager()
+        self.load_stock_list()
+        
+    def load_stock_list(self):
+        stocks = self.data_mgr.get_all_stocks()
+        self.stock_list.clear()
+        for stock in stocks:
+            item = QListWidgetItem(f"{stock['code']} - {stock['market']}")
+            item.stock_code = stock['code']
+            self.stock_list.addItem(item)
+        self.stock_list.itemClicked.connect(self.on_stock_selected)
+
+    def on_stock_selected(self, item):
+        # 获取股票代码
+        stock_code = item.stock_code
+        
+        # 从DataManager获取完整数据
+        df = self.data_mgr.get_stock_data(stock_code)
+        
+        # 调用特征分析方法
+        analyzer = FeatureAnalyzer()
+        growth_score = analyzer.calculate_growth_score(df['Close'].values)
+        stability_data = analyzer.analyze_stability(df['Close'].values)
+        
+        # 更新成长性图表
+        self.figure1.clear()
+        ax1 = self.figure1.add_subplot(111)
+        ax1.plot(df['Close'], label='收盘价')
+        ax1.set_title(f'成长性分析 - {stock_code}')
+        ax1.legend()
+        self.canvas1.draw()
+        
+        # 更新稳定性图表
+        self.figure2.clear()
+        ax2 = self.figure2.add_subplot(111)
+        ax2.plot(df['Close'], label='原始价格')
+        ax2.plot(stability_data['upper_env'], 'g--', label='上轨道')
+        ax2.plot(stability_data['lower_env'], 'r--', label='下轨道')
+        ax2.scatter(stability_data['peaks'], df['Close'].iloc[stability_data['peaks']], marker='^', color='g')
+        ax2.scatter(stability_data['valleys'], df['Close'].iloc[stability_data['valleys']], marker='v', color='r')
+        ax2.set_title(f'稳定性分析 - 得分: {stability_data["stability_score"]:.2f}')
+        ax2.legend()
+        self.canvas2.draw()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
