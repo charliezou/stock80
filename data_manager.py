@@ -165,4 +165,4 @@ class StockDataManager:
         weekly_file = f"{base_path}_weekly.csv"
         if not os.path.exists(weekly_file):
             raise FileNotFoundError(f"No weekly data found for {code}")
-        return pd.read_csv(weekly_file, index_col=0, parse_dates=True).tail(104)
+        return pd.read_csv(weekly_file, index_col=0, parse_dates=True).iloc[-104:]

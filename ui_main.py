@@ -237,8 +237,6 @@ class FeatureAnalysisPage(QWidget):
         ax2 = self.figure2.add_subplot(111)
         ax2.plot(df['Close'], label='原始价格')
         ax2.plot(df.index, stability_data['filtered'], 'g--', label='包络线')
-        #ax2.plot(df.index, stability_data['filtered'], 'g--', label='上轨道')  # 添加日期索引
-        #ax2.plot(df.index, stability_data['lower_env'], 'r--', label='下轨道')  # 添加日期索引
         ax2.scatter(df.index[stability_data['peaks']],  # 使用日期索引
                    df['Close'].iloc[stability_data['peaks']], 
                    marker='^', color='g')
