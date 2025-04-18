@@ -9,8 +9,9 @@ class FeatureAnalyzer:
         # 新增滤波器参数
         self.cutoff_freq = self.config.getfloat('envelope', 'cutoff_freq', fallback=0.1)
         self.filter_order = self.config.getint('envelope', 'filter_order', fallback=3)
+        self.low_rate = self.config.getfloat('envelope', 'low_rate', fallback=0.10)
 
-    def extract_hilbert_envelope(self, price_data: np.ndarray) -> dict:
+    def extract_hilbert_envelope(self, price_data: np.ndarray):
         """使用希尔伯特变换提取包络线"""
         # 设计低通滤波器
         b, a = butter(self.filter_order, self.cutoff_freq, btype='low')
@@ -20,7 +21,9 @@ class FeatureAnalyzer:
 
         return envelope
 
-    def find_extrema_in_envelope(self,envelope, distance=4, low_rate=0.05):
+    def find_extrema_in_envelope(self, envelope, distance=4, low_rate=None):
+        if low_rate is None:
+            low_rate = self.low_rate
         """在包络线中寻找波峰和波谷"""
         # 寻找波峰
         peaks, properties = find_peaks(
@@ -29,7 +32,7 @@ class FeatureAnalyzer:
             distance=distance
         )  
         #过滤涨幅低于阀值的波峰
-        peaks = peaks[properties["prominences"] > (envelope[peaks] * low_rate)]     
+        peaks = peaks[properties["prominences"] > (envelope[peaks] * low_rate)]   
 
         # 寻找波谷
         valleys, properties = find_peaks(
@@ -37,10 +40,36 @@ class FeatureAnalyzer:
             prominence = 0.01,
             distance=distance
         )       
-
         #过滤跌幅低于阀值的波谷
-
         valleys = valleys[properties["prominences"] > (envelope[valleys] * low_rate/(1-low_rate))]
+
+        return {
+            'peaks':peaks, 
+            'valleys':valleys,
+            
+        }
+
+    def calculate_growth_score(self, envelope, peaks, valleys):
+        #计算成长性分数
+        envelope_len = len(envelope)        
+        k=np.append(peaks,valleys)
+        k.sort()
+        if (k[0] != 0):
+            k = np.append(np.asarray([0]),k)
+        if (k[-1] != envelope_len-1):
+            k = np.append(k, np.asarray([envelope_len-1]))
+        
+        #计算波峰和波谷的周期长度
+        if (peaks[0] == k[1]):
+            peaks_len = [k[i]-k[i-1] for i in range(1, len(k) , 2)]
+            valleys_len = [k[i]-k[i-1] for i in range(2, len(k), 2)]
+        else:
+            peaks_len = [k[i]-k[i-1] for i in range(2, len(k) , 2)]
+            valleys_len = [k[i]-k[i-1] for i in range(1, len(k), 2)]
+
+        # 计算波峰和波谷的价格值
+        peaks_values = envelope[peaks]
+        valleys_values = envelope[valleys]
 
         # 计算波峰和波谷的涨跌幅       
         if peaks[0] > valleys[0]:   #波谷在前面
@@ -52,55 +81,44 @@ class FeatureAnalyzer:
                 np.asarray([envelope[peaks[i]]/envelope[valleys[i-1]]-1 for i in range(1, len(peaks))]))
             valleys_rate = np.asarray([envelope[valleys[i]]/envelope[peaks[i]]-1 for i in range(len(valleys))])
 
-        #峰值点
-        peaks_values = envelope[peaks]
-        valleys_values = envelope[valleys]            
-
         return {
-            'peaks':peaks, 
-            'valleys':valleys,
+            'growth_score': (np.sum(peaks_len) / envelope_len) * 100,
+            'peaks_values':peaks_values,
+            'valleys_values':valleys_values,
             'peaks_rate':peaks_rate,
             'valleys_rate':valleys_rate,
-            'peaks_values':peaks_values,
-            'valleys_values':valleys_values
+            'peaks_len':peaks_len,
+            'peaks_avg_len':np.mean(peaks_len),
+            'peaks_std_len':np.std(peaks_len),
+            'valleys_len':valleys_len,
+            'valleys_avg_len':np.mean(valleys_len),
+            'valleys_std_len':np.std(valleys_len)
         }
 
-    def calculate_growth_score(self, weekly_data: np.ndarray) -> float:
-        '''计算成长性分数'''
-        positive_weeks = np.sum(np.diff(weekly_data) > 0)
-        return (positive_weeks / (len(weekly_data)-1)) * 100
+    def calculate_growth_score_v2(self, price_data: np.ndarray) -> float:
+        price_data = self.extract_hilbert_envelope(price_data)
+        peaks, _ = find_peaks(price_data, distance=4)
+        valleys, _ = find_peaks(-price_data, distance=4)
+        timeslen = len(price_data)
+        return self.calculate_growth_score_v2(timeslen, peaks, valleys)
 
     def calculate_annualized_returns(self, prices, years_list):
         returns = []
         for years in years_list:
             period_prices = prices[-52*years:]
             if len(period_prices) < 52*years:
-                returns.append(None)
-                continue
+                break
             start_price = period_prices[0]
             end_price = period_prices[-1]
             annualized_return = (end_price/start_price)**(1/years) - 1
-            returns.append(annualized_return)
+            returns.append((years,annualized_return))
         return returns
 
     def analyze_stability(self, price_data: np.ndarray) -> dict:
         '''稳定性分析算法'''
         envelope = self.extract_hilbert_envelope(price_data)
         extreme_data = self.find_extrema_in_envelope(envelope)
+        growth_data = self.calculate_growth_score(envelope, extreme_data['peaks'], extreme_data['valleys'])
 
-        #peaks, _ = find_peaks(price_data, distance=10)
-        #valleys, _ = find_peaks(-price_data, distance=10)
+        return extreme_data | growth_data, envelope
 
-        valley_values = envelope[extreme_data['valleys']]
-        stability_score = 1 - (np.std(valley_values) / np.mean(valley_values))
-
-        return {
-            'envelope': envelope.tolist(),
-            'peaks': extreme_data['peaks'].tolist(),
-            'valleys': extreme_data['valleys'].tolist(),
-            'peaks_rate': extreme_data['peaks_rate'].tolist(),
-            'valleys_rate': extreme_data['valleys_rate'].tolist(),
-            'peaks_values': extreme_data['peaks_values'].tolist(),
-            'valleys_values': extreme_data['valleys_values'].tolist(),
-            'stability_score': stability_score
-        }

@@ -217,7 +217,7 @@ class FeatureAnalysisPage(QWidget):
         stock_code = item.stock_code
         
         # 从DataManager获取完整数据
-        df = self.data_mgr.get_stock_weekly_data(stock_code).iloc[-104:]  # 取最近104周数据
+        df = self.data_mgr.get_stock_weekly_data(stock_code).iloc[-520:]  # 取最近104周数据
         
         # 调用特征分析方法
         analyzer = FeatureAnalyzer()
@@ -228,17 +228,16 @@ class FeatureAnalysisPage(QWidget):
         # 计算不同周期的年化收益
         close_prices = df['Close'].values
         annual_returns = analyzer.calculate_annualized_returns(close_prices, years_list)
-        growth_score = analyzer.calculate_growth_score(close_prices)
-        stability_data = analyzer.analyze_stability(close_prices)
+        stability_data, envelope = analyzer.analyze_stability(close_prices)
         
         # 在成长性图表标题显示年化率
-        return_labels = [f'{y}年: {r*100:.1f}%' for y,r in zip(years_list, annual_returns)]
+        return_labels = [f'{y}年: {r*100:.1f}%' for y,r in annual_returns]
         
         # 更新成长性图表
         self.figure1.clear()
         ax1 = self.figure1.add_subplot(111)
         ax1.plot(df['Close'], label='收盘价')
-        ax1.set_title(f'成长性分析 - {growth_score:.2f}\n年化收益率: {return_labels}')
+        ax1.set_title(f'年化收益率: {return_labels}')
         ax1.legend()
         self.canvas1.draw()
         
@@ -246,14 +245,14 @@ class FeatureAnalysisPage(QWidget):
         self.figure2.clear()
         ax2 = self.figure2.add_subplot(111)
         ax2.plot(df['Close'], label='原始价格')
-        ax2.plot(df.index, stability_data['envelope'], 'g--', label='包络线')
+        ax2.plot(df.index, envelope, 'g--', label='包络线')
         ax2.scatter(df.index[stability_data['peaks']],  # 使用日期索引
                    df['Close'].iloc[stability_data['peaks']], 
-                   marker='^', color='g')
+                   marker='^', color='b')
         ax2.scatter(df.index[stability_data['valleys']],  # 使用日期索引
                    df['Close'].iloc[stability_data['valleys']],
                    marker='v', color='r')
-        ax2.set_title(f'稳定性分析 - 得分: {stability_data["stability_score"]:.2f}')
+        ax2.set_title(f'稳定性分析 - 得分: {stability_data["growth_score"]:.2f}')
         ax2.legend()
         self.canvas2.draw()
 
