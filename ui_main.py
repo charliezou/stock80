@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QVB
                             QLineEdit,QComboBox,QSplitter)
 from data_manager import StockDataManager
 from feature_analysis import FeatureAnalyzer
+from analysis_engine import AnalysisEngine
 import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -12,7 +13,7 @@ import matplotlib.pyplot as plt
 
 # 设置全局字体为支持中文的字体
 matplotlib.rcParams['font.family'] = ['Songti SC', 'Heiti TC', 'sans-serif']
-matplotlib.rcParams['font.size'] = 9
+matplotlib.rcParams['font.size'] = 7  # 字体大小
 matplotlib.rcParams['axes.unicode_minus'] = False  # 正确显示负号
 
 plt.style.use('ggplot')
@@ -148,18 +149,98 @@ class DataManagementPage(QWidget):
 class TrendAnalysisPage(QWidget):
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout()
+
+        main_layout = QVBoxLayout()
+        
+        # 主布局使用QSplitter
+        splitter = QSplitter()
+        
+
+        # 左侧股票列表面板
+        left_panel = QWidget()
+        left_layout = QVBoxLayout()
+        self.stock_list = QListWidget()
+        left_layout.addWidget(QLabel("已导入股票列表"))
+        left_layout.addWidget(self.stock_list)
+        left_panel.setLayout(left_layout)
+
+        
+        # 右侧图表区域
+        right_panel = QWidget()
+        layout = QVBoxLayout(right_panel)
         
         # 图表区域
-        self.figure = Figure(figsize=(10, 6))
+        self.figure = Figure(figsize=(15, 18))
         self.canvas = FigureCanvasQTAgg(self.figure)
         
-        # 控制区域
+        layout.addWidget(self.canvas)
+
+        splitter.addWidget(left_panel)
+        splitter.addWidget(right_panel)
+        splitter.setSizes([200, 600])
+
+        # 控制按钮
         self.analyze_btn = QPushButton("开始趋势分析")
         
-        layout.addWidget(self.canvas)
-        layout.addWidget(self.analyze_btn)
-        self.setLayout(layout)
+        main_layout.addWidget(splitter)
+        main_layout.addWidget(self.analyze_btn)
+        self.setLayout(main_layout)
+        
+        # 初始化数据管理器
+        self.data_mgr = StockDataManager()
+        self._load_stock_list()
+    
+    def _load_stock_list(self):
+        stocks = self.data_mgr.get_all_stocks()
+        self.stock_list.clear()
+        for stock in stocks:
+            item = QListWidgetItem(f"{stock['code']} - {stock['market']}")
+            item.stock_code = stock['code']
+            self.stock_list.addItem(item)
+        self.stock_list.itemClicked.connect(self.on_stock_selected)
+    
+    def on_stock_selected(self, item):          
+        # 获取选中股票数据
+        stock_code = item.stock_code
+        
+        # 从DataManager获取完整数据
+        close_prices = self.data_mgr.get_stock_weekly_data(stock_code)['Close'].iloc[-1000:]
+        return_series = close_prices.pct_change(1)
+        
+        # 调用分析引擎            
+        engine = AnalysisEngine()
+        
+        window_size = 15
+        days_to_forecast = 8
+        use_returns = False
+        scale_method = 'first'
+        forecast_cal_method = "mean"
+
+        if use_returns:
+            matches = engine.retrieve_similar_patterns(return_series, window_size, days_to_forecast, scale_method)
+        else:
+            matches = engine.retrieve_similar_patterns(close_prices, window_size, days_to_forecast, scale_method)
+        best_matches = engine.find_best_matches(matches, index_distance = 8)
+        print(best_matches)
+
+        forecast_returns, forecast_prices = engine.cal_forecast(close_prices, return_series, best_matches, window_size, days_to_forecast, forecast_cal_method)
+        
+        # 清除旧图表
+        self.figure.clear()
+
+        engine.plot_patterns_and_forecast(
+            self.figure,
+            close_prices,
+            return_series,
+            best_matches,
+            window_size,
+            days_to_forecast,
+            forecast_returns,
+            forecast_prices
+        )
+        
+        # 更新画布
+        self.canvas.draw()
 
 class FeatureAnalysisPage(QWidget):
     def __init__(self):
