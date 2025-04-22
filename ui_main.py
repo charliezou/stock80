@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 # 设置全局字体为支持中文的字体
 matplotlib.rcParams['font.family'] = ['Songti SC', 'Heiti TC', 'sans-serif']
-matplotlib.rcParams['font.size'] = 7  # 字体大小
+matplotlib.rcParams['font.size'] = 8  # 字体大小
 matplotlib.rcParams['axes.unicode_minus'] = False  # 正确显示负号
 
 plt.style.use('ggplot')
@@ -170,10 +170,18 @@ class TrendAnalysisPage(QWidget):
         layout = QVBoxLayout(right_panel)
         
         # 图表区域
-        self.figure = Figure(figsize=(15, 18))
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.figure1 = Figure(figsize=(8, 4))
+        self.canvas1 = FigureCanvasQTAgg(self.figure1)
+
+        self.figure2 = Figure(figsize=(8, 4))
+        self.canvas2 = FigureCanvasQTAgg(self.figure2)
+
+        self.figure3 = Figure(figsize=(8, 4))
+        self.canvas3 = FigureCanvasQTAgg(self.figure3)
         
-        layout.addWidget(self.canvas)
+        layout.addWidget(self.canvas1)
+        layout.addWidget(self.canvas2)
+        layout.addWidget(self.canvas3)
 
         splitter.addWidget(left_panel)
         splitter.addWidget(right_panel)
@@ -214,7 +222,7 @@ class TrendAnalysisPage(QWidget):
         days_to_forecast = 8
         use_returns = False
         scale_method = 'first'
-        forecast_cal_method = "mean"
+        forecast_cal_method = "sigmean"
 
         if use_returns:
             matches = engine.retrieve_similar_patterns(return_series, window_size, days_to_forecast, scale_method)
@@ -226,10 +234,12 @@ class TrendAnalysisPage(QWidget):
         forecast_returns, forecast_prices = engine.cal_forecast(close_prices, return_series, best_matches, window_size, days_to_forecast, forecast_cal_method)
         
         # 清除旧图表
-        self.figure.clear()
+        self.figure1.clear()
+        self.figure2.clear()
+        self.figure3.clear()
 
         engine.plot_patterns_and_forecast(
-            self.figure,
+            [self.figure1,self.figure2,self.figure3],
             close_prices,
             return_series,
             best_matches,
@@ -240,7 +250,9 @@ class TrendAnalysisPage(QWidget):
         )
         
         # 更新画布
-        self.canvas.draw()
+        self.canvas1.draw()
+        self.canvas2.draw()
+        self.canvas3.draw()
 
 class FeatureAnalysisPage(QWidget):
     def __init__(self):
@@ -318,8 +330,9 @@ class FeatureAnalysisPage(QWidget):
         self.figure1.clear()
         ax1 = self.figure1.add_subplot(111)
         ax1.plot(df['Close'], label='收盘价')
-        ax1.set_title(f'年化收益率: {return_labels}')
-        ax1.legend()
+        ax1.set_title(f'年化收益率: {return_labels}',fontsize=10)
+        ax1.legend(fontsize=8)
+        ax1.tick_params(axis='both', which='major', labelsize=8)
         self.canvas1.draw()
         
         # 更新稳定性图表
@@ -333,8 +346,9 @@ class FeatureAnalysisPage(QWidget):
         ax2.scatter(df.index[stability_data['valleys']],  # 使用日期索引
                    df['Close'].iloc[stability_data['valleys']],
                    marker='v', color='r')
-        ax2.set_title(f'稳定性分析 - 得分: {stability_data["growth_score"]:.2f}')
-        ax2.legend()
+        ax2.set_title(f'稳定性分析 - 得分: {stability_data["growth_score"]:.2f}',fontsize=10)
+        ax2.tick_params(axis='both', which='major', labelsize=8)
+        ax2.legend(fontsize=8)
         self.canvas2.draw()
 
 if __name__ == "__main__":

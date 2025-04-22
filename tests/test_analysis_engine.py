@@ -17,8 +17,6 @@ class TestAnalysisEngine(unittest.TestCase):
         scale_method = 'first'
         forecast_cal_method = "mean"
 
-        print(self.close_prices[349:369])
-        print(self.return_series[349:369])
 
         if use_returns:
             matches = self.engine.retrieve_similar_patterns(self.return_series, window_size, days_to_forecast, scale_method)
