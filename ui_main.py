@@ -1,8 +1,8 @@
 import sys
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QDate, QDateTime
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout,
                             QLabel, QPushButton, QFileDialog, QHBoxLayout,QListWidget,QInputDialog,QMessageBox,QListWidgetItem,
-                            QLineEdit,QComboBox,QSplitter)
+                            QLineEdit,QComboBox,QSplitter,QDateEdit)
 from data_manager import StockDataManager
 from feature_analysis import FeatureAnalyzer
 from analysis_engine import AnalysisEngine
@@ -161,8 +161,25 @@ class TrendAnalysisPage(QWidget):
         left_layout = QVBoxLayout()
         self.stock_list = QListWidget()
         left_layout.addWidget(QLabel("已导入股票列表"))
+        self.refresh_btn = QPushButton("刷新列表")
+        self.refresh_btn.clicked.connect(self._load_stock_list)
+        left_layout.addWidget(self.refresh_btn)
+
+ 
+
         left_layout.addWidget(self.stock_list)
+
+               # 在左侧面板添加日期输入控件
+        date_layout = QHBoxLayout()
+        date_layout.addWidget(QLabel("分析日期:"))
+        self.date_input = QDateEdit()
+        self.date_input.setDisplayFormat("yyyy-MM-dd")
+        self.date_input.setDate(QDate.currentDate())  # 设置默认值为当前日期
+        date_layout.addWidget(self.date_input)
+        left_layout.addLayout(date_layout)
+
         left_panel.setLayout(left_layout)
+
 
         
         # 右侧图表区域
@@ -193,6 +210,9 @@ class TrendAnalysisPage(QWidget):
         main_layout.addWidget(splitter)
         main_layout.addWidget(self.analyze_btn)
         self.setLayout(main_layout)
+
+        # 修改按钮信号绑定
+        self.analyze_btn.clicked.connect(self.on_analyze_clicked)  # 原连接可能需要调
         
         # 初始化数据管理器
         self.data_mgr = StockDataManager()
@@ -204,34 +224,27 @@ class TrendAnalysisPage(QWidget):
         for stock in stocks:
             item = QListWidgetItem(f"{stock['code']} - {stock['market']}")
             item.stock_code = stock['code']
+            item.market = stock['market']
             self.stock_list.addItem(item)
         self.stock_list.itemClicked.connect(self.on_stock_selected)
     
-    def on_stock_selected(self, item):          
-        # 获取选中股票数据
+    def on_stock_selected(self, item):
         stock_code = item.stock_code
+        market = item.market
         
         # 从DataManager获取完整数据
         close_prices = self.data_mgr.get_stock_weekly_data(stock_code)['Close'].iloc[-1000:]
-        return_series = close_prices.pct_change(1)
         
         # 调用分析引擎            
         engine = AnalysisEngine()
-        
-        window_size = 15
-        days_to_forecast = 8
-        use_returns = False
-        scale_method = 'first'
-        forecast_cal_method = "sigmean"
-
-        if use_returns:
-            matches = engine.retrieve_similar_patterns(return_series, window_size, days_to_forecast, scale_method)
-        else:
-            matches = engine.retrieve_similar_patterns(close_prices, window_size, days_to_forecast, scale_method)
-        best_matches = engine.find_best_matches(matches, index_distance = 8)
-        print(best_matches)
-
-        forecast_returns, forecast_prices = engine.cal_forecast(close_prices, return_series, best_matches, window_size, days_to_forecast, forecast_cal_method)
+        analysis_date = self.date_input.date().toString("yyyy-MM-dd")
+        if not analysis_date:
+            analysis_date = None
+        best_matches,forecast_returns, forecast_prices, real_prices, before_prices = engine.find_patterns_and_forecast(
+            close_prices, 
+            market = market,  # 新增市场参数
+            analysis_date=analysis_date
+        )
         
         # 清除旧图表
         self.figure1.clear()
@@ -240,19 +253,28 @@ class TrendAnalysisPage(QWidget):
 
         engine.plot_patterns_and_forecast(
             [self.figure1,self.figure2,self.figure3],
-            close_prices,
-            return_series,
+            before_prices,
             best_matches,
-            window_size,
-            days_to_forecast,
             forecast_returns,
-            forecast_prices
+            forecast_prices,
+            real_prices
         )
         
         # 更新画布
         self.canvas1.draw()
         self.canvas2.draw()
         self.canvas3.draw()
+
+
+    def on_analyze_clicked(self):
+        # 获取选中股票和日期
+        selected_items = self.stock_list.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, '警告', '请先选择股票')
+            return
+
+        self.on_stock_selected(selected_items[0])
+        
 
 class FeatureAnalysisPage(QWidget):
     def __init__(self):
@@ -267,6 +289,9 @@ class FeatureAnalysisPage(QWidget):
         left_layout = QVBoxLayout()
         self.stock_list = QListWidget()
         left_layout.addWidget(QLabel("已导入股票列表"))
+        self.refresh_btn = QPushButton("刷新列表")
+        self.refresh_btn.clicked.connect(self.load_stock_list)
+        left_layout.addWidget(self.refresh_btn)
         left_layout.addWidget(self.stock_list)
         left_panel.setLayout(left_layout)
         

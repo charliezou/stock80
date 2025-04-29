@@ -53,8 +53,6 @@ class StockDataManager:
             'Low': 'min',
             'Close': 'last',
             'Volume': 'sum',
-            'Dividends':'sum',
-            'Stock Splits':'sum'
         }).dropna()
 
     def download_data(self, codes: List[Tuple[str, str]]):
@@ -63,14 +61,21 @@ class StockDataManager:
             symbol = code + self._get_symbol_suffix(market)
             try:
                 # 获取yfinance数据
-                stock = yf.Ticker(symbol)
                 start_date = self.config.get('Data', 'start_date')
                 start = datetime.strptime(start_date, '%Y-%m-%d')
                 end = datetime.now()
                 end_date = end.strftime('%Y-%m-%d')
                 
                 # 下载日线和周线数据
-                daily_data = stock.history(start=start, end=end, interval='1d', auto_adjust=True)
+                data = yf.download(symbol, start=start, end=end, interval='1D', auto_adjust=True)
+                data = data.drop_duplicates()
+                daily_data = pd.DataFrame({
+                    'Open' : data['Open'][symbol],                    
+                    'High' : data['High'][symbol],
+                    'Low' : data['Low'][symbol],
+                    'Close' : data['Close'][symbol],
+                    'Volume' : data['Volume'][symbol],
+                })
                 weekly_data = self.resample_weekly(daily_data)
                 
                 # 保存数据到CSV
@@ -155,7 +160,7 @@ class StockDataManager:
         base_path = os.path.join(self.storage_path, code)
         daily_file = f"{base_path}_daily.csv"
         if not os.path.exists(daily_file):
-            raise FileNotFoundError(f"No daily data found for {code}")
+            return None
 
         return pd.read_csv(daily_file, index_col=0, parse_dates=True)
 
@@ -164,5 +169,19 @@ class StockDataManager:
         base_path = os.path.join(self.storage_path, code)
         weekly_file = f"{base_path}_weekly.csv"
         if not os.path.exists(weekly_file):
-            raise FileNotFoundError(f"No weekly data found for {code}")
+            return None
         return pd.read_csv(weekly_file, index_col=0, parse_dates=True)
+    
+    def get_index_weekly_data(self, symbol):
+        """获取指数周线数据"""
+        df =  self.get_stock_weekly_data(symbol)
+        if df is None:
+            return None
+        return df['Close']
+    
+    def get_stock_market(self, code):
+        """获取股票市场信息"""
+        cursor = self.db_conn.cursor()
+        cursor.execute('SELECT market FROM stocks_info WHERE code = ?', (code,))
+        result = cursor.fetchone()
+        return result[0] if result else 'US'
