@@ -17,6 +17,7 @@ class AnalysisEngine:
         self.window_size = self.config.getint('Analysis', 'window_size', fallback=15)
         self.days_to_forecast = self.config.getint('Analysis', 'days_to_forecast', fallback=8)
         self.use_returns = self.config.getboolean('Analysis', 'use_returns', fallback=False)
+        self.use_volume = self.config.getboolean('Analysis', 'use_volume', fallback=False)
         self.scale_method = self.config.get('Analysis', 'scale_method', fallback='first')
         self.forecast_cal_method = self.config.get('Analysis', 'forecast_cal_method', fallback='sigmean')
         self.index_distance = self.config.getint('Analysis', 'index_distance', fallback=8)
@@ -43,30 +44,41 @@ class AnalysisEngine:
         }
 
     def scale_series(self, series):
-        if self.scale_method == "minmax":
+        if self.scale_method == "minmax":   #适合returns
             return (series - series.min()) / (series.max() - series.min())
-        if self.scale_method == "first":
+        if self.scale_method == "first":    #适合prices
             return series / series[0]
-        if self.scale_method == "zscore":
+        if self.scale_method == "mean":     #适合prices
+            return series / series.mean()
+        if self.scale_method == "zscore":   #适合returns
             return (series - series.mean()) / series.std()
-        if self.scale_method is None:
+        if self.scale_method is None:   #适合returns
             return series
 
     def compute_dtw_distance(self, series_a, series_b):
         scaled_a = self.scale_series(series_a)
         scaled_b = self.scale_series(series_b)
-        distance, _ = fastdtw(scaled_a.reshape(-1, 1),
-                            scaled_b.reshape(-1, 1),
+        if scaled_a.ndim == 1:
+            scaled_a = scaled_a.reshape(-1, 1)
+            scaled_b = scaled_b.reshape(-1, 1)
+        distance, _ = fastdtw(scaled_a,
+                            scaled_b,
                             radius=self.dtw_radius,
                             dist=euclidean)
         return distance
 
 
-    def retrieve_similar_patterns(self, series, market=None):
+    def retrieve_similar_patterns(self, series, market=None, volume=None):
         if self.use_returns:
             series = series.pct_change(1)
                     
         current_segment = series[-self.window_size:].values
+    
+        if self.use_volume and volume is not None:
+            if self.use_returns:
+                volume = volume.pct_change(1)
+            volume_segment = volume[-self.window_size:].values
+            current_segment = np.column_stack((current_segment, volume_segment))
 
         if market is not None:
             market_data = self.broad_indices.get(market)      
@@ -84,9 +96,15 @@ class AnalysisEngine:
 
         for index in range(1,len(series) - 2 * self.window_size - self.days_to_forecast):
             historical_segment = series[index: index + self.window_size].values
+            
+            if self.use_volume and volume is not None:
+                volume_segment = volume[index: index + self.window_size].values
+                historical_segment = np.column_stack((historical_segment, volume_segment))
+
             if self.use_broad_market_index and market_data is not None:
                 index_segment = index_series[index: index + self.window_size].values
                 historical_segment = np.column_stack((historical_segment, index_segment))
+
             similarity_score = self.compute_dtw_distance(current_segment, historical_segment)
 
             for i, (best_distance, _) in enumerate(top_matches):
@@ -127,6 +145,7 @@ class AnalysisEngine:
             subsequent_segment = return_series[match_index + self.window_size:match_index + self.window_size + self.days_to_forecast].values
             projected_prices.append(subsequent_segment)
             similarity_scores.append(similarity_score)
+            print(f"Match {idx + 1}: Similarity Score = {similarity_score:.2f}, Match Returns = {subsequent_segment}")
         # 计算中位数预测路径
         projected_prices = np.array(projected_prices)
         similarity_scores = np.array(similarity_scores)
@@ -141,10 +160,11 @@ class AnalysisEngine:
             forecast_returns = np.sum(projected_prices * sig_similarity_scores.reshape(-1, 1), axis=0)  
         forecast_cumulative = (forecast_returns + 1).cumprod() * 100
         forecast_prices = forecast_cumulative / 100 *  close_prices.iloc[-1]
+        
 
         return forecast_returns, forecast_prices
 
-    def find_patterns_and_forecast(self, close_prices, market = None, analysis_date=None):
+    def find_patterns_and_forecast(self, close_prices, market=None, volume=None, analysis_date=None):
 
         if analysis_date is not None:
             before_prices = close_prices[close_prices.index<=analysis_date]
@@ -152,8 +172,10 @@ class AnalysisEngine:
         else:
             before_prices = close_prices
             after_prices = None
+        if self.use_volume and volume is not None:
+            volume = volume[volume.index<=analysis_date]
                 
-        matches = self.retrieve_similar_patterns(before_prices, market)
+        matches = self.retrieve_similar_patterns(before_prices, market, volume=volume)
         best_matches = self.find_best_matches(matches)
         forecast_returns, forecast_prices = self.cal_forecast(before_prices, best_matches)
         if after_prices is None or len(after_prices) == 0:

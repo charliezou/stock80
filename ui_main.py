@@ -233,7 +233,9 @@ class TrendAnalysisPage(QWidget):
         market = item.market
         
         # 从DataManager获取完整数据
-        close_prices = self.data_mgr.get_stock_weekly_data(stock_code)['Close'].iloc[-1000:]
+        dt = self.data_mgr.get_stock_weekly_data(stock_code).iloc[-1000:]
+        close_prices = dt['Close']
+        volume = dt['Volume']
         
         # 调用分析引擎            
         engine = AnalysisEngine()
@@ -243,7 +245,8 @@ class TrendAnalysisPage(QWidget):
         best_matches,forecast_returns, forecast_prices, real_prices, before_prices = engine.find_patterns_and_forecast(
             close_prices, 
             market = market,  # 新增市场参数
-            analysis_date=analysis_date
+            volume=volume,  # 新增成交量参数
+            analysis_date=analysis_date  # 新增分析日期参数
         )
         
         # 清除旧图表
