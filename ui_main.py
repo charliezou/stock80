@@ -120,19 +120,28 @@ class DataManagementPage(QWidget):
             return
         
         try:
-            self.data_manager.download_data([(code, market)])
+            success_codes = self.data_manager.download_data([(code, market)])
             self._refresh_stock_list()
             self.code_input.clear()
-            QMessageBox.information(self, '成功', '数据导入成功')
+            if len(success_codes)>0:
+                QMessageBox.information(self, '成功', '数据导入成功')
+            else:
+                QMessageBox.warning(self, '错误', '数据导入失败') 
+
         except Exception as e:
             QMessageBox.critical(self, '错误', f'导入失败: {str(e)}')
     
     def _handle_bulk_update(self):
         stocks = self.data_manager.get_all_stocks()
+        codes = [(stock['code'], stock['market']) for stock in stocks]
+        if not codes:
+            QMessageBox.warning(self, '警告', '没有需要更新的股票数据')
+            return
+
         try:
-            self.data_manager.download_data([(code, market) for code, market, _ in stocks])
+            success_codes = self.data_manager.download_data(codes)
             self._refresh_stock_list()
-            QMessageBox.information(self, '成功', f'已更新{len(stocks)}支股票数据')
+            QMessageBox.information(self, '成功', f'已更新{len(success_codes)}支股票数据')
         except Exception as e:
             QMessageBox.critical(self, '错误', f'批量更新失败: {str(e)}')
     
@@ -349,10 +358,11 @@ class FeatureAnalysisPage(QWidget):
         # 计算不同周期的年化收益
         close_prices = df['Close'].values
         annual_returns = analyzer.calculate_annualized_returns(close_prices, years_list)
-        stability_data, envelope = analyzer.analyze_stability(close_prices)
+        stability_data, envelope = analyzer.analyze_stability(close_prices, years_list)
         
         # 在成长性图表标题显示年化率
         return_labels = [f'{y}年: {r*100:.1f}%' for y,r in annual_returns]
+        stability_labels = [f'{y}年: {r*100:.1f}' for y,r in stability_data['growth_scores']]
         
         # 更新成长性图表
         self.figure1.clear()
@@ -374,7 +384,7 @@ class FeatureAnalysisPage(QWidget):
         ax2.scatter(df.index[stability_data['valleys']],  # 使用日期索引
                    df['Close'].iloc[stability_data['valleys']],
                    marker='v', color='r')
-        ax2.set_title(f'稳定性分析 - 得分: {stability_data["growth_score"]:.2f}',fontsize=10)
+        ax2.set_title(f'成长性得分: {stability_labels}',fontsize=10)
         ax2.tick_params(axis='both', which='major', labelsize=8)
         ax2.legend(fontsize=8)
         self.canvas2.draw()

@@ -56,6 +56,7 @@ class StockDataManager:
         }).dropna()
 
     def download_data(self, codes: List[Tuple[str, str]]):
+        success_codes = []
         '''下载股票数据并存储'''
         for code, market in codes:
             symbol = code + self._get_symbol_suffix(market)
@@ -68,6 +69,9 @@ class StockDataManager:
                 
                 # 下载日线和周线数据
                 data = yf.download(symbol, start=start, end=end, interval='1D', auto_adjust=True)
+                if data.empty:
+                    print(f"No data available for {symbol}")
+                    continue
                 data = data.drop_duplicates()
                 daily_data = pd.DataFrame({
                     'Open' : data['Open'][symbol],                    
@@ -93,11 +97,14 @@ class StockDataManager:
                     INSERT OR REPLACE INTO stocks_info
                     VALUES (?, ?, ?, ?, ?, ?)
                 ''', (code, market, start_date, end_date, now, base_path))
+
+                success_codes.append(code)
                 
             except Exception as e:
                 print(f"Failed to download {symbol}: {str(e)}")
         
         self.db_conn.commit()
+        return success_codes
 
     def needs_update(self, code: str) -> bool:
         '''检查数据是否需要更新'''

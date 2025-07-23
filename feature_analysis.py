@@ -58,6 +58,8 @@ class FeatureAnalyzer:
             k = np.append(np.asarray([0]),k)
         if (k[-1] != envelope_len-1):
             k = np.append(k, np.asarray([envelope_len-1]))
+
+        print(k)
         
         #计算波峰和波谷的周期长度
         if (peaks[0] == k[1]):
@@ -95,12 +97,70 @@ class FeatureAnalyzer:
             'valleys_std_len':np.std(valleys_len)
         }
 
-    def calculate_growth_score_v2(self, price_data: np.ndarray) -> float:
-        price_data = self.extract_hilbert_envelope(price_data)
-        peaks, _ = find_peaks(price_data, distance=4)
-        valleys, _ = find_peaks(-price_data, distance=4)
-        timeslen = len(price_data)
-        return self.calculate_growth_score_v2(timeslen, peaks, valleys)
+    def calculate_growth_score_v2(self, envelope, peaks, valleys, years_list):
+        #计算成长性分数
+
+        envelope_len = len(envelope) 
+
+        k=np.append(peaks,valleys)
+        k.sort()
+        if (k[0] != 0):
+            k = np.append(np.asarray([0]),k)
+        if (k[-1] != envelope_len-1):
+            k = np.append(k, np.asarray([envelope_len-1]))
+      
+        #计算波峰和波谷的周期长度
+        if (peaks[0] == k[1]):
+            peaks_len = [k[i]-k[i-1] for i in range(1, len(k) , 2)]
+            valleys_len = [k[i]-k[i-1] for i in range(2, len(k), 2)]
+        else:
+            peaks_len = [k[i]-k[i-1] for i in range(2, len(k) , 2)]
+            valleys_len = [k[i]-k[i-1] for i in range(1, len(k), 2)]
+
+        indicator = np.asarray([0] * envelope_len)
+        if (peaks[0] == k[1]):
+            for i in range(1, len(k), 2):
+                indicator[k[i-1]:k[i]] = 1
+        else:
+            for i in range(2, len(k), 2):
+                indicator[k[i-1]:k[i]] = 1
+
+        growth_scores = []
+        for years in years_list:
+            period_indicator = indicator[-52*years:]
+            if len(period_indicator) < 52*years:
+                break
+            growth_scores.append((years,np.sum(period_indicator) / len(period_indicator)))
+
+        
+        # 计算波峰和波谷的价格值
+        peaks_values = envelope[peaks]
+        valleys_values = envelope[valleys]
+
+        # 计算波峰和波谷的涨跌幅       
+        if peaks[0] > valleys[0]:   #波谷在前面
+            peaks_rate = np.asarray([envelope[peaks[i]]/envelope[valleys[i]]-1 for i in range(len(peaks))])
+            valleys_rate = np.append(np.asarray([envelope[valleys[0]] / np.max(envelope[:valleys[0]])-1]), 
+                np.asarray([envelope[valleys[i]]/envelope[peaks[i-1]]-1 for i in range(1, len(valleys))]))
+        else:
+            peaks_rate = np.append(np.asarray([envelope[peaks[0]] / np.min(envelope[:peaks[0]])-1]), 
+                np.asarray([envelope[peaks[i]]/envelope[valleys[i-1]]-1 for i in range(1, len(peaks))]))
+            valleys_rate = np.asarray([envelope[valleys[i]]/envelope[peaks[i]]-1 for i in range(len(valleys))])
+
+        return {
+            'growth_score': (np.sum(peaks_len) / envelope_len) * 100,
+            'growth_scores':growth_scores,
+            'peaks_values':peaks_values,
+            'valleys_values':valleys_values,
+            'peaks_rate':peaks_rate,
+            'valleys_rate':valleys_rate,
+            'peaks_len':peaks_len,
+            'peaks_avg_len':np.mean(peaks_len),
+            'peaks_std_len':np.std(peaks_len),
+            'valleys_len':valleys_len,
+            'valleys_avg_len':np.mean(valleys_len),
+            'valleys_std_len':np.std(valleys_len)
+        }
 
     def calculate_annualized_returns(self, prices, years_list):
         returns = []
@@ -114,11 +174,11 @@ class FeatureAnalyzer:
             returns.append((years,annualized_return))
         return returns
 
-    def analyze_stability(self, price_data: np.ndarray) -> dict:
+    def analyze_stability(self, price_data: np.ndarray, years_list) -> dict:
         '''稳定性分析算法'''
         envelope = self.extract_hilbert_envelope(price_data)
         extreme_data = self.find_extrema_in_envelope(envelope)
-        growth_data = self.calculate_growth_score(envelope, extreme_data['peaks'], extreme_data['valleys'])
+        growth_data = self.calculate_growth_score_v2(envelope, extreme_data['peaks'], extreme_data['valleys'],years_list)
 
         return extreme_data | growth_data, envelope
 
