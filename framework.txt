@@ -10,17 +10,47 @@
 
 二、APP功能
 1、获取数据功能
+   类：StockDataMgr -> 下载、保存、读取cvs
+   类：StockSymbol -> instrument的syboml,syboml的基本信息（名称、行业、市值、市盈率、股息收益率） 
+   类：StockMetaDB -> 对元数据的保存：syboml、市场、instrument、更新日期
+
    - 获取代码和代码基础信息
+      get_instrument_symbols("CSI300") -> list
+      get_symbol_baseinfo("600519.ss", "cn") -> dict
    - 获取和更新数据（日、周）
+      download_symbol("600519.ss","cn",start=start) -> True
+      download_symbols([("600519.ss","cn"),(...)], start=start) -> 失败List
+      download_instrument_symbols("CSI300") -> 失败List
+      get_stock_data("600519.ss","cn", day/week) -> pd 
+      get_stocks_data(["600519.ss","cn"], day/week) -> dict
+      get_instrument_data("CSI300") -> dict 
 
 2、辅助函数
+  utils
    - 生成包咯线数据
+    extract_envelope(pd) -> pd
    - 寻找包咯线峰谷
+    find_peaks(pd) -> list: [(date1,P),(date2,V),(...)]
    - 归一化和还原
+    normalization(pd) -> pd 
+    unnormalization(pd) -> pd
+   - 年化收益率
+    annualized_returns(pd, years) -> list: [(year, return),]
+   - 盈亏时长比
+    growth_scores(pd, years, peaks=None) -> list: [(year, scores),]
 
-3、预测函数（返回预测值序列）
+3、预测函数
+   - predict(runconfig:dict, symbols,  pd) -> pd, dict
+      runconfig_kronos: kronos_model, x_stamp, y_stamp, pred_len, lookback
+      runconfig_dtw: dtw_model, x_stamp, y_stamp, pred_len, lookback
+
+   - predicts(runconfig:dict, [(symbols, pd),]) -> dict (symbol:pd, dict), 
+
    - 通过真实值预测
+   
    - 通过包洛线来预测
+
+
 
 4、预测模型（价格预测、成交量预测）
    - 历史近似曲线模型
