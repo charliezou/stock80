@@ -10,7 +10,7 @@
 
 二、APP函数功能
 1、获取数据功能
-   类：StockDataMgr -> 下载、保存、读取cvs
+   类：StockDataMgr -> 下载、更新、读取cvs
    类：StockSymbol -> instrument的syboml,syboml的基本信息（名称、行业、市值、市盈率、股息收益率） 
    类：StockMetaDB -> 对元数据的保存：syboml、市场、instrument、更新日期
 
@@ -19,8 +19,8 @@
       get_symbol_baseinfo("600519.ss", "cn") -> dict
    - 获取和更新数据（日、周）
       download_symbol("600519.ss","cn",start=start) -> True
-      download_symbols([("600519.ss","cn"),(...)], start=start) -> 失败List
-      download_instrument_symbols("CSI300") -> 失败List
+      download_symbols([("600519.ss","cn"),(...)], start=start) -> 成功list, 失败List
+      download_instrument_symbols("CSI300") -> 成功list, 失败List
       get_stock_data("600519.ss","cn", day/week) -> pd 
       get_stocks_data(["600519.ss","cn"], day/week) -> dict
       get_instrument_data("CSI300") -> dict 
@@ -40,17 +40,46 @@
     growth_scores(pd, years, peaks=None) -> list: [(year, scores),]
 
 3、预测函数
-   - predict(runconfig:dict, symbols,  pd) -> pd, dict
-      runconfig_kronos: kronos_model, x_stamp, y_stamp, pred_len, lookback
-      runconfig_dtw: dtw_model, x_stamp, y_stamp, pred_len, lookback
+   -未来值预测
+   - predict_dwt(runconfig:dict, symbols,  pd) -> pred_pd, dict
+      runconfig: dtw_model, x_stamp, y_stamp, lookback, pred_len;支持包洛线；组合大盘曲线；
+   - predict_kronos(runconfig:dict, symbols,  pd) -> pred_pd, dict
+    - runconfig: kronos_model, x_stamp, y_stamp, lookback, pred_len；;支持包洛线
+       
+   - batch_predict_dtw(runconfig:dict, [(symbols, pd),]) -> dict (symbol:pd, dict)
+   - batch_predict_kronos(runconfig:dict, [(symbols, pd),]) -> dict (symbol:pd, dict)
 
-   - predicts(runconfig:dict, [(symbols, pd),]) -> dict (symbol:pd, dict), 
+   -准确性评估
+    - 给定数据，确认测试区间段，对测试区间段每一点进行模型预测，返回[(lookback1,pred1,true1),...]
+    - 计算归一化后的RMSE、方向准确率；
+    
+4、大盘行情趋势预测
+  - analysis_situation(runconfig:dict,market, "CSI300") -> result: dict
+     -运行周期：（谷峰下行 -> 筑底期 ->波谷上行 -> 筑峰期）、V值（当前值与上一个峰值的距离）、置信度；
+     -runconfig:model、x_stamp 
+      base模式: 生成包咯线数据 -> 定位最近一个峰值点、V值 -> 确定运行周期 -> 根据dtw寻找相似历史数据 -> 计算置信度
+      模式2: 未来值预测 -> 生成包咯线数据 -> 计算当前点运行周期、V值 -> 根据dtw寻找相似历史数据 -> 计算置信度
+      模式3: 结合成交量、高开低走\低开高走值
+  - 准确性评估
+    - 给定数据，确认测试区间段，对测试区间段每一点进行模型预测，返回[(lookback1,pred_运行周期，pred_V1,true_运行周期),...]
+    - 计算V1值准确率、周期准确率；       
 
-   - 通过真实值预测
-   
-   - 通过包洛线来预测
+5、股票行情趋势预测
 
+6、TopN策略
+  - 股票排序
+    - 模型预测未来值；last、min、max、mean作为得分
+    - AI返回
 
+6、回测函数
+  - 单股票回测
+    backTest(symbol, pd,...)
+      - 每隔N周预测：预测值下个N周的last值，下降卖出，上升买入；周模型或者天模型
+      - 行情趋势预测：筑底期/波谷上行建仓；筑峰期/波谷下行减仓；一次性/逐步建仓减仓策略；周模型
+      - 组合预测: 大盘行情 + 股票行情组合；
+  
+  - 股票池回测
+      - 每隔N周预测：根据预测值，从股票池中选择TopN建仓；
 
 4、预测模型（价格预测、成交量预测）
    - 历史近似曲线模型
