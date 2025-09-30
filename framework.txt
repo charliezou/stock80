@@ -14,6 +14,8 @@
    类：StockSymbol -> instrument的syboml,syboml的基本信息（名称、行业、市值、市盈率、股息收益率） 
    类：StockMetaDB -> 对元数据的保存：syboml、市场、instrument、更新日期
 
+   性能：pd数据放在缓冲池；
+
    - 获取代码和代码基础信息
       get_instrument_symbols("CSI300") -> list
       get_symbol_baseinfo("600519.ss", "cn") -> dict
@@ -36,10 +38,10 @@
     unnormalization(pd) -> pd
    - 年化收益率
     annualized_returns(pd, years) -> list: [(year, return),]
-   - 盈亏时长比
+   - 盈利稳定系数
     growth_scores(pd, years, peaks=None) -> list: [(year, scores),]
 
-3、预测函数
+3、价格预测函数
    -未来值预测
    - predict_dwt(runconfig:dict, symbols,  pd) -> pred_pd, dict
       runconfig: dtw_model, x_stamp, y_stamp, lookback, pred_len;支持包洛线；组合大盘曲线；
@@ -53,64 +55,75 @@
     - 给定数据，确认测试区间段，对测试区间段每一点进行模型预测，返回[(lookback1,pred1,true1),...]
     - 计算归一化后的RMSE、方向准确率；
     
-4、大盘行情趋势预测
-  - analysis_situation(runconfig:dict,market, "CSI300") -> result: dict
+4、行情预测函数
+  - analysis_situation(runconfig:dict,market, index/symbol) -> result: dict
      -运行周期：（谷峰下行 -> 筑底期 ->波谷上行 -> 筑峰期）、V值（当前值与上一个峰值的距离）、置信度；
      -runconfig:model、x_stamp 
-      base模式: 生成包咯线数据 -> 定位最近一个峰值点、V值 -> 确定运行周期 -> 根据dtw寻找相似历史数据 -> 计算置信度
-      模式2: 未来值预测 -> 生成包咯线数据 -> 计算当前点运行周期、V值 -> 根据dtw寻找相似历史数据 -> 计算置信度
-      模式3: 结合成交量、高开低走\低开高走值
+      base模式: 生成包咯线数据 -> 定位最近一个峰值点、V值 -> 确定运行周期 -> 根据dtw寻找相似历史数据（可结合成交量、高开低走\低开高走值） -> 计算置信度
+      模式2: 调用价格预测函数 -> 生成包咯线数据 -> 计算当前点运行周期、V值 -> 根据dtw寻找相似历史数据 -> 计算置信度
+      模式3 - 调用AI返回行情
+
   - 准确性评估
     - 给定数据，确认测试区间段，对测试区间段每一点进行模型预测，返回[(lookback1,pred_运行周期，pred_V1,true_运行周期),...]
     - 计算V1值准确率、周期准确率；       
 
-5、股票行情趋势预测
+6、TopN预测函数
+  - 股票排序函数
+    - 模式1: 调用价格预测模型；last、min、max、mean作为得分 -> 获得排序
+    - 模式2: 调用行情预测函数；运行周期+V值+置信度 -> 获得排序
+    - 模式3: 调用AI进行打分 -> 返回排序
 
-6、TopN策略
-  - 股票排序
-    - 模型预测未来值；last、min、max、mean作为得分
-    - AI返回
+    -准确性评估
+      -P(n):预测Top n的Item准确命中实际在Top n的数量/n；(P(1)+...+P(N)/N
+      -整体相关性：SRCC：1 - 6*（di^2)/(n*(n^2-1));di为第i个元素在预测和实际的排序位置差；
 
-6、回测函数
-  - 单股票回测
-    backTest(symbol, pd,...)
-      - 每隔N周预测：预测值下个N周的last值，下降卖出，上升买入；周模型或者天模型
-      - 行情趋势预测：筑底期/波谷上行建仓；筑峰期/波谷下行减仓；一次性/逐步建仓减仓策略；周模型
-      - 组合预测: 大盘行情 + 股票行情组合；
+7、回测函数
+  - 单股票回测函数
+    SingleBackTest(model, symbol, pd,...)
+      - 价格预测(每隔N周) ->预测值下个N周的last值，下降卖出，上升买入/持有；周模型或者天模型
+      - 行情预测：筑底期/波谷上行建仓；筑峰期/波谷下行减仓；一次性/逐步建仓减仓策略；周模型
+      - 价格预测+行情预测组合: 股票预测 + 大盘/股票行情 ；
   
-  - 股票池回测
-      - 每隔N周预测：根据预测值，从股票池中选择TopN建仓；
+  - TopN回测函数
+     TopNBackTest(model, symbols, pdList,...)
+      - 每隔N周预测：根据排序值，从股票池中选择TopN建仓，定期DropK；
 
-4、预测模型（价格预测、成交量预测）
-   - 历史近似曲线模型
-     - 组合预测（组合大盘指数）
-   - kronos模型
-   - 峰谷预测
+8、发现函数
+  - 发现领头羊行业函数
+    -find__bellwether_sector 
+  - 发现领头羊股票函数
+    -find_bellwether_stock（行业、年投资收益、盈利稳定系数、股息收益、市盈率、股息收益率、市值）
+  - 发现起飞行业函数
+    -find_takeoff_sector
+  - 发现起飞股票函数
+    -find_takeoff_stock
 
-5、预测封装
-   - 单代码预测
-   - 批量预测
-   - 批量中选优
-   - 大盘行情预测
-   - 股票行情预测 
+三、UI
+1、数据管理
+   - 单股下载/更新
+   - 批量下载/更新
+   目录结构
+     - data
+         -pool:CSI300.txt;...,<selfname>.txt
+         -cn-stock:<symbol>_day.csv;<symbol>_week.csv;
+         -metadata.db(下载记录，股票信息)
 
-6、回测功能
-   - 单代码回测
-   - N选Top回测
+2、属性分析
+   - 股票信息
+   - 趋势图
 
-7、股票属性计算
-   - 成长性
-   - 稳定性
+3、价格预估
+   预估验证
 
-8、股票池生成
-   
-9、机会点检测
-   - 优质新股
-   - 起飞股
+4、行情预估
+   预估验证
+
+5、模型回测
+
+6、智能发现
 
 
-2、对比大盘
-2、ui
+
  a、属性汇总模块（文字）
    --名称、上市日期、市值、市盈率
    --成长性
