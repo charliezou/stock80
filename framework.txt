@@ -10,7 +10,7 @@
 
 二、APP函数功能
 1、获取数据功能
-   类：StockDataMgr -> 下载、更新、读取cvs
+   类：StockDataMgr -> 下载、更新、读取cvs     
    类：StockSymbol -> instrument的syboml,syboml的基本信息（名称、行业、市值、市盈率、股息收益率） 
    类：StockMetaDB -> 对元数据的保存：syboml、市场、instrument、更新日期
 
@@ -20,15 +20,27 @@
       get_instrument_symbols("CSI300") -> list
       get_symbol_baseinfo("600519.ss", "cn") -> dict
    - 获取和更新数据（日、周）
-      download_symbol("600519.ss","cn",start=start) -> True
-      download_symbols([("600519.ss","cn"),(...)], start=start) -> 成功list, 失败List
-      download_instrument_symbols("CSI300") -> 成功list, 失败List
-      get_stock_data("600519.ss","cn", day/week) -> pd 
-      get_stocks_data(["600519.ss","cn"], day/week) -> dict
-      get_instrument_data("CSI300") -> dict 
+   StockDataMgr：
+      download("SZ600519","cn",start=start，qlib=False) -> True（下载、保存csv、更新meta）
+      batch_download([("SZ600519","cn"),(...)], start=start) -> 成功list, 失败List
+      download_instrument_symbols("CSI300") -> 成功list, 失败List（读代码表，调用下载）
+      delete_symbol("SZ600519")
+  StockSymbol:
+      get_symbol("SS600519","cn", day/week) -> pd 
+      get_symbols([（"SS600519","cn"），(...)], day/week) -> dict
+      get_instrument_symbols("CSI300", day/week) -> dict 
+      get_instrument("CSI300") -> list
+      get_info("SS600519","cn") -> dict     
+  StockMetaDB：
+      _create_tables
+      update
+      delete
+      getall
+
+  
 
 2、辅助函数
-  utils
+  UtilsAnalyzer
    - 生成包咯线数据
     extract_envelope(pd) -> pd
    - 寻找包咯线峰谷
@@ -122,7 +134,8 @@
 
 6、智能发现
 
-
+7、工具
+   qlib更新
 
  a、属性汇总模块（文字）
    --名称、上市日期、市值、市盈率
