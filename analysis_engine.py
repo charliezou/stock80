@@ -44,16 +44,17 @@ class AnalysisEngine:
         }
 
     def scale_series(self, series):
-        if self.scale_method == "minmax":   #适合returns
-            return (series - series.min()) / (series.max() - series.min())
+        """对numpy序列进行缩放"""
+        if self.scale_method == "minmax":   #适合prices;进行了纵向缩放
+            return (series - np.min(series, axis=0)) / (np.max(series,axis=0) - np.min(series,axis=0))
         if self.scale_method == "first":    #适合prices
             return series / series[0]
         if self.scale_method == "mean":     #适合prices
-            return series / series.mean()
-        if self.scale_method == "zscore":   #适合returns
-            return (series - series.mean()) / series.std()
-        if self.scale_method is None:   #适合returns
-            return series
+            return series / np.mean(series, axis=0)
+        if self.scale_method == "zscore":   #适合prices;进行了纵向缩放
+            return np.clip((series - np.mean(series, axis=0)) / (np.std(series, axis=0) + 1e-5), -5, 5)
+        if scale_method == "pctchange":   #适合returns
+            return np.diff(series, axis=0) / series[:-1]
 
     def compute_dtw_distance(self, series_a, series_b):
         scaled_a = self.scale_series(series_a)

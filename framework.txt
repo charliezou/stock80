@@ -47,7 +47,7 @@
     find_peaks(pd) -> list: [(date1,P),(date2,V),(...)]
    - 归一化和还原
     normalization(pd) -> pd 
-    unnormalization(pd) -> pd
+    denormalization(pd) -> pd
    - 年化收益率
     annualized_returns(pd, years) -> list: [(year, return),]
    - 盈利稳定系数
@@ -55,7 +55,7 @@
 
 3、价格预测函数
    -未来值预测
-   - predict_dwt(runconfig:dict, symbols,  pd) -> pred_pd, dict
+   - predict_dwt(runconfig:dict, symbol,  pd) -> pred_pd, dict
       runconfig: dtw_model, x_stamp, y_stamp, lookback, pred_len;支持包洛线；组合大盘曲线；
    - predict_kronos(runconfig:dict, symbols,  pd) -> pred_pd, dict
     - runconfig: kronos_model, x_stamp, y_stamp, lookback, pred_len；;支持包洛线
