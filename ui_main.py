@@ -10,6 +10,7 @@ import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
+import time
 
 # 设置全局字体为支持中文的字体
 matplotlib.rcParams['font.family'] = ['Songti SC', 'Heiti TC', 'sans-serif']
@@ -178,18 +179,27 @@ class TrendAnalysisPage(QWidget):
 
         left_layout.addWidget(self.stock_list)
 
-               # 在左侧面板添加日期输入控件
+        # 修改日期输入布局
         date_layout = QHBoxLayout()
-        date_layout.addWidget(QLabel("分析日期:"))
-        self.date_input = QDateEdit()
-        self.date_input.setDisplayFormat("yyyy-MM-dd")
-        self.date_input.setDate(QDate.currentDate())  # 设置默认值为当前日期
-        date_layout.addWidget(self.date_input)
+        date_layout.addWidget(QLabel("开始日期:"))
+        self.start_date_input = QDateEdit()
+        self.start_date_input.setDisplayFormat("yyyy-MM-dd")
+        self.start_date_input.setDate(QDate.currentDate().addMonths(-6))  # 默认半年前
+        date_layout.addWidget(self.start_date_input)
+        
+        date_layout.addWidget(QLabel("结束日期:"))
+        self.end_date_input = QDateEdit()
+        self.end_date_input.setDisplayFormat("yyyy-MM-dd")
+        self.end_date_input.setDate(QDate.currentDate())  # 默认今天
+        date_layout.addWidget(self.end_date_input)
+        
         left_layout.addLayout(date_layout)
 
         left_panel.setLayout(left_layout)
 
-
+        # 添加分析状态标志
+        self.is_analyzing = False
+        self.current_analysis_date = None
         
         # 右侧图表区域
         right_panel = QWidget()
@@ -235,9 +245,11 @@ class TrendAnalysisPage(QWidget):
             item.stock_code = stock['code']
             item.market = stock['market']
             self.stock_list.addItem(item)
-        self.stock_list.itemClicked.connect(self.on_stock_selected)
-    
-    def on_stock_selected(self, item):
+        #self.stock_list.itemClicked.connect(self.on_stock_selected)
+
+    def on_stock_selected(self, item, analysis_date=None):
+        
+
         stock_code = item.stock_code
         market = item.market
         
@@ -248,15 +260,18 @@ class TrendAnalysisPage(QWidget):
         
         # 调用分析引擎            
         engine = AnalysisEngine()
-        analysis_date = self.date_input.date().toString("yyyy-MM-dd")
+        # 修改参数接收方式
         if not analysis_date:
-            analysis_date = None
-        best_matches,forecast_returns, forecast_prices, real_prices, before_prices = engine.find_patterns_and_forecast(
-            close_prices, 
-            market = market,  # 新增市场参数
-            volume=volume,  # 新增成交量参数
-            analysis_date=analysis_date  # 新增分析日期参数
+            analysis_date = self.current_analysis_date
+            
+        # 修改调用参数
+        best_matches, forecast_returns, forecast_prices, real_prices, before_prices = engine.find_patterns_and_forecast(
+            close_prices,
+            market=market,
+            volume=volume,
+            analysis_date=analysis_date
         )
+
         
         # 清除旧图表
         self.figure1.clear()
@@ -269,7 +284,8 @@ class TrendAnalysisPage(QWidget):
             best_matches,
             forecast_returns,
             forecast_prices,
-            real_prices
+            real_prices,
+            analysis_date
         )
         
         # 更新画布
@@ -279,14 +295,84 @@ class TrendAnalysisPage(QWidget):
 
 
     def on_analyze_clicked(self):
-        # 获取选中股票和日期
+        if self.is_analyzing:
+            QMessageBox.information(self, '提示', '已有分析正在进行')
+            return
+            
         selected_items = self.stock_list.selectedItems()
         if not selected_items:
             QMessageBox.warning(self, '警告', '请先选择股票')
             return
-
-        self.on_stock_selected(selected_items[0])
+            
+        start_date = self.start_date_input.date()
+        end_date = self.end_date_input.date()
+        if start_date > end_date:
+            QMessageBox.warning(self, '错误', '开始日期不能晚于结束日期')
+            return
+            
+        self.is_analyzing = True
+        self.analyze_btn.setText("停止分析")
+        self.analyze_btn.clicked.disconnect()
+        self.analyze_btn.clicked.connect(self._reset_analysis_state)
         
+        # 生成日期序列
+        self.date_queue = []
+        current_date = start_date
+        # 调整到最近的周五
+        if current_date.dayOfWeek() != Qt.Friday:
+            # 计算到下一个周五需要增加的天数
+            days_to_add = (5 - current_date.dayOfWeek() + 7) % 7
+            current_date = current_date.addDays(days_to_add)
+        
+        # 确保调整后的日期在范围内
+        if current_date > end_date:
+            QMessageBox.warning(self, '错误', '日期范围内没有有效的周五')
+            return
+            
+        while current_date <= end_date:
+            self.date_queue.append(current_date.toString("yyyy-MM-dd"))
+            current_date = current_date.addDays(7)  # 直接增加7天保证后续都是周五
+
+        self._run_weekly_analysis(selected_items[0])
+
+    def keyPressEvent(self, event):
+        """重写键盘事件处理"""
+        if event.key() == Qt.Key_Space and self.is_analyzing:
+            self.space_pressed = True
+        else:
+            super().keyPressEvent(event)
+
+    def _run_weekly_analysis(self, item):
+        # 改为窗体级别键盘监听
+        self.space_pressed = False
+        self.setFocus()  # 让窗口获得焦点
+
+        for analysis_date in self.date_queue:
+            print(f"正在分析 {analysis_date} 的数据")    
+
+            if not self.is_analyzing:
+                break
+            
+            self.current_analysis_date = analysis_date
+            self.on_stock_selected(item, analysis_date)
+
+            if analysis_date == self.date_queue[-1]:
+                break
+
+            # 等待空格键按下
+            self.space_pressed = False
+            while not self.space_pressed and self.is_analyzing:
+                QApplication.processEvents()  # 保持UI响应
+                time.sleep(0.1)  # 减少CPU占用
+            
+        # 恢复原始事件处理
+        self._reset_analysis_state()
+        
+    def _reset_analysis_state(self):
+        self.is_analyzing = False
+        self.analyze_btn.setText("开始趋势分析")
+        self.analyze_btn.clicked.disconnect()
+        self.analyze_btn.clicked.connect(self.on_analyze_clicked)    
 
 class FeatureAnalysisPage(QWidget):
     def __init__(self):

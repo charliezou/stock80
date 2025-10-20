@@ -186,12 +186,13 @@ class AnalysisEngine:
         
         return best_matches,forecast_returns, forecast_prices ,real_prices, before_prices
 
-    def plot_patterns_and_forecast(self, figs, close_prices, best_matches, forecast_returns, forecast_prices, real_prices):
+    def plot_patterns_and_forecast(self, figs, close_prices, best_matches, forecast_returns, forecast_prices, real_prices,analysis_date=None):
         return_series = close_prices.pct_change(1)
         axes = [figs[i].add_subplot(111) for i in range(3)]
 
         # 绘制历史价格曲线
-        axes[0].plot(close_prices, color='black', label='Stock Price History')
+        label0= f"Price Patterns to {analysis_date}" if analysis_date is not None else "Price Patterns to Current Date"
+        axes[0].plot(close_prices, color='black', label="Stock Price History")
 
         # 颜色配置
         color_palette = ['red', 'green', 'purple', 'orange', 'cyan']
@@ -205,10 +206,8 @@ class AnalysisEngine:
 
             axes[0].plot(historical_data, color=line_color, label=f"Pattern {idx + 1},{similarity_score:.2f},{str(close_prices.index[match_index])[:10]}")
 
-
-
         # 设置第一个子图
-        axes[0].set_title(f'Price Patterns',fontsize=10)
+        axes[0].set_title(label0,fontsize=10)
         axes[0].set_xlabel('Date',fontsize=8)
         axes[0].set_ylabel('Price',fontsize=8)
         axes[0].tick_params(axis='both', which='major', labelsize=8)
