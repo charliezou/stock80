@@ -241,16 +241,15 @@ class AnalysisEngine:
 
 
         axes[2].plot(range(self.window_size), close_prices[-self.window_size:], color='black', linewidth=3, label="Current Price")
-        median_forecast_prices = median_forecast_cumulative / 100 *  close_prices.iloc[-self.window_size-1]
-        axes[2].plot(range(self.window_size + self.days_to_forecast), median_forecast_prices,
-                    color='black', linestyle='dashed', label="Median Projected Path")
-        for i in range (len(median_forecast_prices)):
-            axes[2].text(i, median_forecast_prices[i], f"{median_forecast_prices[i]:.2f}", ha ='center', va='bottom',fontsize=8)
+        
+        axes[2].plot(range(self.window_size-1, self.window_size + self.days_to_forecast), np.r_[close_prices.iloc[-1],forecast_prices],
+                    color='black', linestyle='dashed', label="Forecast Price")
+        #for i in range(self.days_to_forecast):
+        #    axes[2].text(self.window_size+i, forecast_prices[i], f"{forecast_prices[i]:.2f}", ha ='center', va='bottom',fontsize=8)
 
-        axes[2].plot(range(self.window_size-1, self.window_size + len(real_prices)), np.append(np.asarray(close_prices[-1]), real_prices), color='red', linestyle='dashed', label="Real Price")
-        #for i in range (len(real_prices)):
-        #    axes[2].text(self.window_size+i, real_prices[i], f"{real_prices[i]:.2f}", ha ='center', va='bottom',fontsize=8, color='red')
-
+        if len(real_prices) > 0:
+            axes[2].plot(range(self.window_size-1, self.window_size + len(real_prices)), np.r_[close_prices.iloc[-1],real_prices], color='red', linestyle='dashed', label="Real Price")
+        
         # 设置第三个子图
         axes[2].set_title(f"Similar {self.window_size}-Day Patterns and Forecast Price",fontsize=10)
         axes[2].set_xlabel("Days",fontsize=8)

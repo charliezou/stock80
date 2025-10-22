@@ -236,6 +236,11 @@ class TrendAnalysisPage(QWidget):
         # 初始化数据管理器
         self.data_mgr = StockDataManager()
         self._load_stock_list()
+
+        # 新增缓存相关属性
+        self.analysis_cache = []  # 存储元组 (date_str, before_prices, best_matches, forecast_returns, forecast_prices, real_prices)
+        self.current_cache_index = -1
+        
     
     def _load_stock_list(self):
         stocks = self.data_mgr.get_all_stocks()
@@ -245,53 +250,48 @@ class TrendAnalysisPage(QWidget):
             item.stock_code = stock['code']
             item.market = stock['market']
             self.stock_list.addItem(item)
-        #self.stock_list.itemClicked.connect(self.on_stock_selected)
 
-    def on_stock_selected(self, item, analysis_date=None):
-        
+    def keyPressEvent(self, event):
+        """处理左右箭头切换缓存结果"""
+        if event.key() == Qt.Key_Left:
+            self.current_cache_index -= 1
+            if self.current_cache_index <= -1:
+                self.current_cache_index = len(self.analysis_cache)-1
+            self._display_cached_result()
+        elif event.key() == Qt.Key_Right:
+            self.current_cache_index += 1
+            if self.current_cache_index >= len(self.analysis_cache):
+                self.current_cache_index = 0
+            self._display_cached_result()
+        else:
+            super().keyPressEvent(event)
 
-        stock_code = item.stock_code
-        market = item.market
-        
-        # 从DataManager获取完整数据
-        dt = self.data_mgr.get_stock_weekly_data(stock_code).iloc[-1000:]
-        close_prices = dt['Close']
-        volume = dt['Volume']
-        
-        # 调用分析引擎            
-        engine = AnalysisEngine()
-        # 修改参数接收方式
-        if not analysis_date:
-            analysis_date = self.current_analysis_date
+    def _display_cached_result(self):
+        """显示缓存中的分析结果"""
+        if 0 <= self.current_cache_index < len(self.analysis_cache):
+            date_str, before_prices, best_matches, forecast_returns, forecast_prices, real_prices = self.analysis_cache[self.current_cache_index]
             
-        # 修改调用参数
-        best_matches, forecast_returns, forecast_prices, real_prices, before_prices = engine.find_patterns_and_forecast(
-            close_prices,
-            market=market,
-            volume=volume,
-            analysis_date=analysis_date
-        )
+            # 清除旧图表
+            self.figure1.clear()
+            self.figure2.clear()
+            self.figure3.clear()
 
-        
-        # 清除旧图表
-        self.figure1.clear()
-        self.figure2.clear()
-        self.figure3.clear()
+            # 重新绘制图表
+            engine = AnalysisEngine()
+            engine.plot_patterns_and_forecast(
+                [self.figure1, self.figure2, self.figure3],
+                before_prices,
+                best_matches,
+                forecast_returns,
+                forecast_prices,
+                real_prices,
+                date_str  # 添加日期参数用于标题显示
+            )
 
-        engine.plot_patterns_and_forecast(
-            [self.figure1,self.figure2,self.figure3],
-            before_prices,
-            best_matches,
-            forecast_returns,
-            forecast_prices,
-            real_prices,
-            analysis_date
-        )
-        
-        # 更新画布
-        self.canvas1.draw()
-        self.canvas2.draw()
-        self.canvas3.draw()
+            # 更新画布
+            self.canvas1.draw_idle()
+            self.canvas2.draw_idle()
+            self.canvas3.draw_idle()
 
 
     def on_analyze_clicked(self):
@@ -308,12 +308,7 @@ class TrendAnalysisPage(QWidget):
         end_date = self.end_date_input.date()
         if start_date > end_date:
             QMessageBox.warning(self, '错误', '开始日期不能晚于结束日期')
-            return
-            
-        self.is_analyzing = True
-        self.analyze_btn.setText("停止分析")
-        self.analyze_btn.clicked.disconnect()
-        self.analyze_btn.clicked.connect(self._reset_analysis_state)
+            return        
         
         # 生成日期序列
         self.date_queue = []
@@ -333,42 +328,69 @@ class TrendAnalysisPage(QWidget):
             self.date_queue.append(current_date.toString("yyyy-MM-dd"))
             current_date = current_date.addDays(7)  # 直接增加7天保证后续都是周五
 
-        self._run_weekly_analysis(selected_items[0])
+        # 修改按钮信号连接
+        self.is_analyzing = True
+        self.analyze_btn.setText("停止分析")
+        self.analyze_btn.clicked.disconnect()
+        self.analyze_btn.clicked.connect(self.cancel_analysis)
+        
+        # 启动分析线程
+        import threading
+        self.analysis_thread = threading.Thread(target=self._run_weekly_analysis, args=(selected_items[0],))
+        self.analysis_thread.start()
 
-    def keyPressEvent(self, event):
-        """重写键盘事件处理"""
-        if event.key() == Qt.Key_Space and self.is_analyzing:
-            self.space_pressed = True
-        else:
-            super().keyPressEvent(event)
 
     def _run_weekly_analysis(self, item):
-        # 改为窗体级别键盘监听
-        self.space_pressed = False
         self.setFocus()  # 让窗口获得焦点
-
+        self.analysis_cache = []  # 清空旧缓存
+        
         for analysis_date in self.date_queue:
-            print(f"正在分析 {analysis_date} 的数据")    
-
             if not self.is_analyzing:
                 break
-            
+
+            print(f'开始分析{analysis_date}...')
             self.current_analysis_date = analysis_date
-            self.on_stock_selected(item, analysis_date)
-
-            if analysis_date == self.date_queue[-1]:
-                break
-
-            # 等待空格键按下
-            self.space_pressed = False
-            while not self.space_pressed and self.is_analyzing:
-                QApplication.processEvents()  # 保持UI响应
-                time.sleep(0.1)  # 减少CPU占用
             
-        # 恢复原始事件处理
-        self._reset_analysis_state()
+            # 获取分析结果
+            stock_code = item.stock_code
+            market = item.market
+            dt = self.data_mgr.get_stock_weekly_data(stock_code).iloc[-1000:]
+            close_prices = dt['Close']
+            volume = dt['Volume']
+            
+            engine = AnalysisEngine()
+            analysis_result = engine.find_patterns_and_forecast(
+                close_prices,
+                market=market,
+                volume=volume,
+                analysis_date=analysis_date
+            )
+            
+            # 解包结果
+            best_matches, forecast_returns, forecast_prices, real_prices, before_prices = analysis_result
+            
+            # 缓存原始数据
+            self.analysis_cache.append((
+                analysis_date,
+                before_prices,
+                best_matches,
+                forecast_returns,
+                forecast_prices,
+                real_prices
+            ))
+
+            # 立即显示最新结果
+            self.current_cache_index = len(self.analysis_cache) - 1
+            self._display_cached_result()
+            QApplication.processEvents()
+
+        if self.analysis_cache:
+            self.current_cache_index = len(self.analysis_cache) - 1
         
-    def _reset_analysis_state(self):
+        self.cancel_analysis()
+        #QMessageBox.information(self, '完成', '分析完成')
+        
+    def cancel_analysis(self):
         self.is_analyzing = False
         self.analyze_btn.setText("开始趋势分析")
         self.analyze_btn.clicked.disconnect()
