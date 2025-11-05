@@ -72,7 +72,7 @@ class DataManagementPage(QWidget):
         
         # 按钮
         self.import_btn = QPushButton("导入数据")
-        self.update_btn = QPushButton("批量更新")
+        self.update_btn = QPushButton("批量导入")
         self.validate_btn = QPushButton("验证数据")
         
         # 连接信号槽
@@ -133,18 +133,62 @@ class DataManagementPage(QWidget):
             QMessageBox.critical(self, '错误', f'导入失败: {str(e)}')
     
     def _handle_bulk_update(self):
-        stocks = self.data_manager.get_all_stocks()
-        codes = [(stock['code'], stock['market']) for stock in stocks]
-        if not codes:
-            QMessageBox.warning(self, '警告', '没有需要更新的股票数据')
+        # 获取用户输入的配置名称和市场    
+        market, ok = QInputDialog.getItem(self, '选择市场', '请选择市场:', ['A-SH', 'A-SZ', 'HK', 'US'], 0, False)
+        if not ok:
             return
 
+        config_name, ok = QInputDialog.getText(self, '批量导入配置', '请输入配置名称:')
+        if not ok:
+            return
+        
+        # 从config.ini读取股票代码列表
         try:
-            success_codes = self.data_manager.download_data(codes)
+            import configparser
+            config = configparser.ConfigParser()
+            config.read('config.ini')
+            
+            if 'StockLists' not in config:
+                QMessageBox.warning(self, '错误', '配置文件中没有StockLists配置段')
+                return  
+
+            stock_list_key = f"{market}_{config_name}"
+            if config_name.strip() == "" or stock_list_key not in config['StockLists']:
+                # 尝试使用市场名称作为键
+                if market not in config['StockLists']:
+                    QMessageBox.warning(self, '错误', f'配置文件中没有找到{market}市场的股票代码列表')
+                    return
+                stock_codes_str = config['StockLists'][market]
+            else:
+                stock_codes_str = config['StockLists'][stock_list_key]
+            
+            # 解析股票代码
+            stock_codes = [code.strip() for code in stock_codes_str.split(',') if code.strip()]
+            if not stock_codes:
+                QMessageBox.warning(self, '错误', '股票代码列表为空')
+                return
+                
+            # 确认导入
+            confirm = QMessageBox.question(self, '确认批量导入', 
+                f'确定要导入{market}市场的{len(stock_codes)}支股票吗？\n股票代码: {stock_codes_str}',
+                QMessageBox.Yes | QMessageBox.No)
+            
+            if confirm != QMessageBox.Yes:
+                return
+            print(f"要导入的股票代码列表: {stock_codes}")
+            # 批量导入数据
+
+            codes_to_import = [(code, market) for code in stock_codes]
+            success_codes = self.data_manager.batch_download(codes_to_import)
             self._refresh_stock_list()
-            QMessageBox.information(self, '成功', f'已更新{len(success_codes)}支股票数据')
+            
+            if success_codes:
+                QMessageBox.information(self, '成功', f'已成功导入{len(success_codes)}支股票数据')
+            else:
+                QMessageBox.warning(self, '警告', '没有成功导入任何股票数据')
+    
         except Exception as e:
-            QMessageBox.critical(self, '错误', f'批量更新失败: {str(e)}')
+            QMessageBox.critical(self, '错误', f'批量导入失败: {str(e)}')
     
     def _refresh_stock_list(self):
         stocks = self.data_manager.get_all_stocks()

@@ -45,7 +45,7 @@ class StockMetaDB:
         cursor.execute('''
             INSERT OR REPLACE INTO stocks_info
             VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        ''', (code, market, start_date, end_date, now, data_path, info.get("shortName", "N/A"), info.get("sector", "N/A"), info.get("marketCap", "N/A"), info.get("trailingPE", "N/A"), info.get("dividendYield", "N/A"),)
+        ''', (code, market, start_date, end_date, now, data_path, info.get("shortName", "N/A"), info.get("sector", "N/A"), info.get("marketCap", "N/A"), info.get("trailingPE", "N/A"), info.get("dividendYield", "N/A")))
         self.db_conn.commit()
 
     def get_all_stocks(self) -> list:

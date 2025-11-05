@@ -106,6 +106,65 @@ class StockDataManager:
         self.db_conn.commit()
         return success_codes
 
+    def batch_download(self, codes, start_date= None):
+        '''批量下载股票数据'''
+        success_codes = []
+        '''下载股票数据并存储'''
+        if start_date is None:
+            start_date = self.config.get('Data','start_date')
+
+        # 生成存储路径
+        base_path = self.storage_path
+        os.makedirs(base_path, exist_ok=True)
+        
+        symbols = [code + self._get_symbol_suffix(market) for code, market in codes]
+        symbol_code = dict(zip(symbols, codes))
+        try:
+            # 获取yfinance数据
+            start = datetime.strptime(start_date, '%Y-%m-%d')
+            end = datetime.now()
+            end_date = end.strftime('%Y-%m-%d')
+
+            # 下载日线数据           
+            datas = yf.download(symbols, group_by="ticker", start=start, end=end, interval='1D', auto_adjust=True)
+            #infos = yf.Tickers(symbols).tickers    
+            if datas.empty:
+                print(f"No data available for all symbols")
+                return success_codes
+            
+            for symbol in symbols:
+                if symbol not in data.columns:
+                    print(f"No data available for {symbol}")
+                    continue
+                code = symbol_code[symbol]
+                # 处理数据
+                daily_data = datas[symbol]
+                daily_data = daily_data.dropna().drop_duplicates()
+
+                # 重采样为周线数据
+                weekly_data = self.resample_weekly(daily_data)
+                
+                # 保存数据到CSV
+                daily_path = f"{base_path}/{code}_daily.csv"
+                weekly_path = f"{base_path}/{code}_weekly.csv"
+                daily_data.to_csv(daily_path)
+                weekly_data.to_csv(weekly_path)
+
+                #info = infos[symbol].info
+                #print(info)
+                # 更新元数据库
+                now = datetime.now().isoformat()
+                cursor = self.db_conn.cursor()
+                cursor.execute('''
+                    INSERT OR REPLACE INTO stocks_info
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (code, market, start_date, end_date, now, base_path))
+                success_codes.append(code)
+            return success_codes
+        except Exception as e:
+            print(f"Failed to download: {str(e)}")
+            return success_codes
+
     def needs_update(self, code: str) -> bool:
         '''检查数据是否需要更新'''
         cursor = self.db_conn.cursor()
