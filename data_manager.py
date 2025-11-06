@@ -106,7 +106,7 @@ class StockDataManager:
         self.db_conn.commit()
         return success_codes
 
-    def batch_download(self, codes, start_date= None):
+    def batch_download(self, codes, market, start_date= None):
         '''批量下载股票数据'''
         success_codes = []
         '''下载股票数据并存储'''
@@ -117,7 +117,7 @@ class StockDataManager:
         base_path = self.storage_path
         os.makedirs(base_path, exist_ok=True)
         
-        symbols = [code + self._get_symbol_suffix(market) for code, market in codes]
+        symbols = [code + self._get_symbol_suffix(market) for code in codes]
         symbol_code = dict(zip(symbols, codes))
         try:
             # 获取yfinance数据
@@ -133,7 +133,7 @@ class StockDataManager:
                 return success_codes
             
             for symbol in symbols:
-                if symbol not in data.columns:
+                if symbol not in datas.columns:
                     print(f"No data available for {symbol}")
                     continue
                 code = symbol_code[symbol]

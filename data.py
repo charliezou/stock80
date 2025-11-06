@@ -200,7 +200,7 @@ class StockDataMgr:
                 return success_codes
             
             for symbol in symbols:
-                if symbol not in data.columns:
+                if symbol not in datas.columns:
                     print(f"No data available for {symbol}")
                     continue
                 code = symbol_code[symbol]

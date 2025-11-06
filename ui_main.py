@@ -177,9 +177,7 @@ class DataManagementPage(QWidget):
                 return
             print(f"要导入的股票代码列表: {stock_codes}")
             # 批量导入数据
-
-            codes_to_import = [(code, market) for code in stock_codes]
-            success_codes = self.data_manager.batch_download(codes_to_import)
+            success_codes = self.data_manager.batch_download(stock_codes, market)
             self._refresh_stock_list()
             
             if success_codes:
