@@ -160,10 +160,12 @@ class StockDataManager:
                     VALUES (?, ?, ?, ?, ?, ?)
                 ''', (code, market, start_date, end_date, now, base_path))
                 success_codes.append(code)
-            return success_codes
+            
         except Exception as e:
             print(f"Failed to download: {str(e)}")
-            return success_codes
+
+        self.db_conn.commit()
+        return success_codes
 
     def needs_update(self, code: str) -> bool:
         '''检查数据是否需要更新'''
