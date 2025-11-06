@@ -68,7 +68,7 @@ class DataManagementPage(QWidget):
         # 输入控件
         self.code_input = QLineEdit(placeholderText='请输入股票代码')
         self.market_combo = QComboBox()
-        self.market_combo.addItems(['A-SH', 'A-SZ', 'HK', 'US'])
+        self.market_combo.addItems(['A-SH', 'A-SZ', 'HK', 'US', 'DP'])
         
         # 按钮
         self.import_btn = QPushButton("导入数据")
@@ -134,7 +134,7 @@ class DataManagementPage(QWidget):
     
     def _handle_bulk_update(self):
         # 获取用户输入的配置名称和市场    
-        market, ok = QInputDialog.getItem(self, '选择市场', '请选择市场:', ['A-SH', 'A-SZ', 'HK', 'US'], 0, False)
+        market, ok = QInputDialog.getItem(self, '选择市场', '请选择市场:', ['A-SH', 'A-SZ', 'HK', 'US', 'DP'], 0, False)
         if not ok:
             return
 

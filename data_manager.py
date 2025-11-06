@@ -42,7 +42,8 @@ class StockDataManager:
             'A-SH': '.SS',   # 沪市
             'A-SZ': '.SZ',   # 深市
             'HK': '.HK',     # 港股
-            'US': ''         # 美股
+            'US': '',         # 美股
+            'DP': ''
         }.get(market, '')
 
     def resample_weekly(self, data):
