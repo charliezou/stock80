@@ -155,7 +155,7 @@ class Dtw_Predictor:
 
     def long_predect(self, prices, symbol, start_date, end_date):
         preds = []
-        for i in pda.index[(pda.index>=3) & (pda.index<=8)]
+        
         for date in prices.index[(prices.index>=start_date) & (prices.index<=end_date)]:
             pred_price, pred_return, real_price = self.predict(prices, symbol, date)
             preds.append((date, pred_price, pred_return, real_price))

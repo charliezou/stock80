@@ -39,14 +39,16 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
         
-        # 初始化三个功能页
+        # 初始化四个功能页
         self.data_page = DataManagementPage()
         self.trend_page = TrendAnalysisPage()
         self.feature_page = FeatureAnalysisPage()
+        self.envelope_page = EnvelopeAnalysisPage()
         
         self.tabs.addTab(self.data_page, "数据管理")
         self.tabs.addTab(self.trend_page, "趋势预测")
         self.tabs.addTab(self.feature_page, "特征分析")
+        self.tabs.addTab(self.envelope_page, "包络线分析")
         
         # 应用样式
         self._apply_styles()
@@ -497,7 +499,7 @@ class FeatureAnalysisPage(QWidget):
         stock_code = item.stock_code
         
         # 从DataManager获取完整数据
-        df = self.data_mgr.get_stock_weekly_data(stock_code).iloc[-520:]  # 取最近104周数据
+        df = self.data_mgr.get_stock_weekly_data(stock_code).iloc[-520:]  # 取最近520周数据
         
         # 调用特征分析方法
         analyzer = FeatureAnalyzer()
@@ -535,6 +537,207 @@ class FeatureAnalysisPage(QWidget):
                    df['Close'].iloc[stability_data['valleys']],
                    marker='v', color='r')
         ax2.set_title(f'成长性得分: {stability_labels}',fontsize=10)
+        ax2.tick_params(axis='both', which='major', labelsize=8)
+        ax2.legend(fontsize=8)
+        self.canvas2.draw()
+
+class EnvelopeAnalysisPage(QWidget):
+    def __init__(self):
+        super().__init__()
+        main_layout = QVBoxLayout()
+        
+        # 创建水平分割布局
+        splitter = QSplitter()
+        
+        # 左侧股票列表面板
+        left_panel = QWidget()
+        left_layout = QVBoxLayout()
+        self.stock_list = QListWidget()
+        left_layout.addWidget(QLabel("已导入股票列表"))
+        self.refresh_btn = QPushButton("刷新列表")
+        self.refresh_btn.clicked.connect(self.load_stock_list)
+        left_layout.addWidget(self.refresh_btn)
+        left_layout.addWidget(self.stock_list)
+        
+        # 添加时间窗口控制区域
+        control_layout = QHBoxLayout()
+        
+        # 添加左右导航按钮
+        self.prev_btn = QPushButton("← 前")
+        self.next_btn = QPushButton("后 →")
+        self.prev_btn.clicked.connect(self.show_previous_week)
+        self.next_btn.clicked.connect(self.show_next_week)
+        control_layout.addWidget(self.prev_btn)
+        control_layout.addWidget(self.next_btn)
+     
+        left_panel.setLayout(left_layout)
+        
+        # 右侧图表区域
+        right_panel = QWidget()
+        right_layout = QVBoxLayout()
+        self.figure1 = Figure(figsize=(8, 4))
+        self.canvas1 = FigureCanvasQTAgg(self.figure1)
+        self.figure2 = Figure(figsize=(8, 4))
+        self.canvas2 = FigureCanvasQTAgg(self.figure2)
+        right_layout.addWidget(self.canvas1)
+        right_layout.addWidget(self.canvas2)
+        right_panel.setLayout(right_layout)
+        
+        splitter.addWidget(left_panel)
+        splitter.addWidget(right_panel)
+        splitter.setSizes([200, 600])
+        
+        # 控制按钮
+        self.analyze_btn = QPushButton("计算包络线指标")
+        
+        main_layout.addWidget(splitter)
+        main_layout.addWidget(self.analyze_btn)
+        self.setLayout(main_layout)
+        
+        # 初始化数据
+        self.data_mgr = StockDataManager()
+        self.current_stock_data = None
+        self.current_stock_code = None
+        self.window_start_index = 0  # 当前520周窗口的起始索引
+        self.window_size = 260  # 默认窗口长度
+        self.load_stock_list()
+    
+    def keyPressEvent(self, event):
+        """处理键盘事件，实现左右键控制"""
+        if self.current_stock_data is None:
+            return
+            
+        if event.key() == Qt.Key_Left:
+            # 左键按下，前推一周
+            self.show_previous_week()
+        elif event.key() == Qt.Key_Right:
+            # 右键按下，后推一周
+            self.show_next_week()
+        elif event.key() == Qt.Key_A:
+            # A键按下，前推52周
+            self.show_previous_periods(52)
+        elif event.key() == Qt.Key_D:
+            # D键按下，后推52周
+            self.show_next_periods(52)
+        else:
+            # 其他按键交给父类处理
+            super().keyPressEvent(event)
+        
+    def load_stock_list(self):
+        stocks = self.data_mgr.get_all_stocks()
+        self.stock_list.clear()
+        for stock in stocks:
+            item = QListWidgetItem(f"{stock['code']} - {stock['market']}")
+            item.stock_code = stock['code']
+            self.stock_list.addItem(item)
+        self.stock_list.itemClicked.connect(self.on_stock_selected)
+        
+    def on_stock_selected(self, item):
+        # 获取股票代码
+        stock_code = item.stock_code
+        self.current_stock_code = stock_code
+        
+        # 从DataManager获取完整数据
+        df = self.data_mgr.get_stock_weekly_data(stock_code)
+        self.current_stock_data = df
+        
+        # 初始化窗口位置为最近104周
+        self.window_start_index = max(0, len(df) - self.window_size)
+
+        self.setFocus()
+        
+        # 分析当前窗口
+        self.analyze_current_window()
+        
+    def show_previous_week(self):
+        if self.current_stock_data is None:
+            return
+            
+        # 前推一周，窗口起始索引减1
+        self.window_start_index = max(0, self.window_start_index - 1)
+        self.analyze_current_window()
+        
+    def show_next_week(self):
+        if self.current_stock_data is None:
+            return
+            
+        # 后推一周，窗口起始索引加1
+        max_start_index = len(self.current_stock_data) - self.window_size
+        self.window_start_index = min(max_start_index, self.window_start_index + 1)
+        self.analyze_current_window()
+        
+    def show_previous_periods(self, periods):
+        """前推指定周期数"""
+        if self.current_stock_data is None:
+            return
+            
+        # 前推指定周期，窗口起始索引减去periods
+        self.window_start_index = max(0, self.window_start_index - periods)
+        self.analyze_current_window()
+        
+    def show_next_periods(self, periods):
+        """后推指定周期数"""
+        if self.current_stock_data is None:
+            return
+            
+        # 后推指定周期，窗口起始索引加上periods
+        max_start_index = len(self.current_stock_data) - self.window_size
+        self.window_start_index = min(max_start_index, self.window_start_index + periods)
+        self.analyze_current_window()
+        
+    def analyze_current_window(self):
+        if self.current_stock_data is None:
+            return
+            
+        # 获取当前520周窗口的数据
+        start_idx = self.window_start_index
+        end_idx = start_idx + self.window_size
+        window_df = self.current_stock_data.iloc[start_idx:end_idx]
+
+        #window_df = self.current_stock_data.iloc[-520:]
+        
+        # 更新窗口信息显示
+        start_date = window_df.index[0].strftime('%Y-%m-%d')
+        end_date = window_df.index[-1].strftime('%Y-%m-%d')
+        
+        print(f"当前窗口:  ({start_date} 至 {end_date})")
+        
+        # 调用特征分析方法
+        analyzer = FeatureAnalyzer()
+        
+        # 获取配置的年数列表
+        years_list = [int(y) for y in self.data_mgr.config['Returns']['years'].split(',')]
+        
+        # 计算不同周期的年化收益
+        close_prices = window_df['Close'].values
+        annual_returns = analyzer.calculate_annualized_returns(close_prices, years_list)
+        stability_data, envelope = analyzer.analyze_stability(close_prices, years_list)
+        
+        # 在成长性图表标题显示年化率
+        return_labels = [f'{y}年: {r*100:.1f}%' for y,r in annual_returns]
+        stability_labels = [f'{y}年: {r*100:.1f}' for y,r in stability_data['growth_scores']]
+        
+        # 更新成长性图表
+        self.figure1.clear()
+        ax1 = self.figure1.add_subplot(111)
+        ax1.plot(window_df['Close'], label='收盘价')
+        ax1.set_title(f'年化收益率: {return_labels}', fontsize=10)
+        ax1.legend(fontsize=8)
+        ax1.tick_params(axis='both', which='major', labelsize=8)
+        self.canvas1.draw()
+        
+        # 更新稳定性图表
+        self.figure2.clear()
+        ax2 = self.figure2.add_subplot(111)
+        #ax2.plot(window_df['Close'], label='原始价格')
+        ax2.plot(window_df.index, envelope, 'g--', label='包络线')
+        ax2.scatter(window_df.index[stability_data['peaks']],  # 使用日期索引
+                   envelope[stability_data['peaks']], 
+                   marker='^', color='b')
+        ax2.scatter(window_df.index[stability_data['valleys']],  # 使用日期索引
+                   envelope[stability_data['valleys']],
+                   marker='v', color='r')
+        ax2.set_title(f'成长性得分: {stability_labels}', fontsize=10)
         ax2.tick_params(axis='both', which='major', labelsize=8)
         ax2.legend(fontsize=8)
         self.canvas2.draw()
