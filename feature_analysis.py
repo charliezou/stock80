@@ -10,6 +10,7 @@ class FeatureAnalyzer:
         self.cutoff_freq = self.config.getfloat('envelope', 'cutoff_freq', fallback=0.1)
         self.filter_order = self.config.getint('envelope', 'filter_order', fallback=3)
         self.low_rate = self.config.getfloat('envelope', 'low_rate', fallback=0.10)
+        self.low_rate2 = self.config.getfloat('envelope', 'low_rate2', fallback=0.05)
 
     def extract_hilbert_envelope(self, price_data: np.ndarray):
         """使用希尔伯特变换提取包络线"""
@@ -174,10 +175,14 @@ class FeatureAnalyzer:
             returns.append((years,annualized_return))
         return returns
 
-    def analyze_stability(self, price_data: np.ndarray, years_list) -> dict:
+    def analyze_stability(self, price_data: np.ndarray, years_list, low_rate_type=1) -> dict:
         '''稳定性分析算法'''
         envelope = self.extract_hilbert_envelope(price_data)
-        extreme_data = self.find_extrema_in_envelope(envelope)
+        if low_rate_type == 1:
+            low_rate = self.low_rate
+        else:
+            low_rate = self.low_rate2
+        extreme_data = self.find_extrema_in_envelope(envelope, low_rate = low_rate)
         growth_data = self.calculate_growth_score_v2(envelope, extreme_data['peaks'], extreme_data['valleys'],years_list)
 
         return extreme_data | growth_data, envelope

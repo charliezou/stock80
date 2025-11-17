@@ -565,8 +565,8 @@ class EnvelopeAnalysisPage(QWidget):
         # 添加左右导航按钮
         self.prev_btn = QPushButton("← 前")
         self.next_btn = QPushButton("后 →")
-        self.prev_btn.clicked.connect(self.show_previous_week)
-        self.next_btn.clicked.connect(self.show_next_week)
+        self.prev_btn.clicked.connect(self.show_previous_periods)
+        self.next_btn.clicked.connect(self.show_next_periods)
         control_layout.addWidget(self.prev_btn)
         control_layout.addWidget(self.next_btn)
      
@@ -579,8 +579,11 @@ class EnvelopeAnalysisPage(QWidget):
         self.canvas1 = FigureCanvasQTAgg(self.figure1)
         self.figure2 = Figure(figsize=(8, 4))
         self.canvas2 = FigureCanvasQTAgg(self.figure2)
+        self.figure3 = Figure(figsize=(8, 4))
+        self.canvas3 = FigureCanvasQTAgg(self.figure3)
         right_layout.addWidget(self.canvas1)
         right_layout.addWidget(self.canvas2)
+        right_layout.addWidget(self.canvas3)
         right_panel.setLayout(right_layout)
         
         splitter.addWidget(left_panel)
@@ -609,16 +612,22 @@ class EnvelopeAnalysisPage(QWidget):
             
         if event.key() == Qt.Key_Left:
             # 左键按下，前推一周
-            self.show_previous_week()
+            self.show_previous_periods(1)
         elif event.key() == Qt.Key_Right:
             # 右键按下，后推一周
-            self.show_next_week()
+            self.show_next_periods(1)
         elif event.key() == Qt.Key_A:
             # A键按下，前推52周
             self.show_previous_periods(52)
         elif event.key() == Qt.Key_D:
             # D键按下，后推52周
             self.show_next_periods(52)
+        elif event.key() == Qt.Key_Q:
+            # A键按下，前推52周
+            self.show_begin_periods()
+        elif event.key() == Qt.Key_E:
+            # D键按下，后推52周
+            self.show_end_periods()
         else:
             # 其他按键交给父类处理
             super().keyPressEvent(event)
@@ -649,24 +658,26 @@ class EnvelopeAnalysisPage(QWidget):
         # 分析当前窗口
         self.analyze_current_window()
         
-    def show_previous_week(self):
+    def show_begin_periods(self):
+        """前推指定周期数"""
         if self.current_stock_data is None:
             return
             
-        # 前推一周，窗口起始索引减1
-        self.window_start_index = max(0, self.window_start_index - 1)
+        # 前推指定周期，窗口起始索引减去periods
+        self.window_start_index = 0
         self.analyze_current_window()
         
-    def show_next_week(self):
+    def show_end_periods(self):
+        """后推指定周期数"""
         if self.current_stock_data is None:
             return
             
-        # 后推一周，窗口起始索引加1
+        # 后推指定周期，窗口起始索引加上periods
         max_start_index = len(self.current_stock_data) - self.window_size
-        self.window_start_index = min(max_start_index, self.window_start_index + 1)
+        self.window_start_index = max_start_index
         self.analyze_current_window()
         
-    def show_previous_periods(self, periods):
+    def show_previous_periods(self, periods=1):
         """前推指定周期数"""
         if self.current_stock_data is None:
             return
@@ -675,7 +686,7 @@ class EnvelopeAnalysisPage(QWidget):
         self.window_start_index = max(0, self.window_start_index - periods)
         self.analyze_current_window()
         
-    def show_next_periods(self, periods):
+    def show_next_periods(self, periods=1):
         """后推指定周期数"""
         if self.current_stock_data is None:
             return
@@ -711,12 +722,11 @@ class EnvelopeAnalysisPage(QWidget):
         # 计算不同周期的年化收益
         close_prices = window_df['Close'].values
         annual_returns = analyzer.calculate_annualized_returns(close_prices, years_list)
-        stability_data, envelope = analyzer.analyze_stability(close_prices, years_list)
+        
         
         # 在成长性图表标题显示年化率
         return_labels = [f'{y}年: {r*100:.1f}%' for y,r in annual_returns]
-        stability_labels = [f'{y}年: {r*100:.1f}' for y,r in stability_data['growth_scores']]
-        
+
         # 更新成长性图表
         self.figure1.clear()
         ax1 = self.figure1.add_subplot(111)
@@ -725,8 +735,11 @@ class EnvelopeAnalysisPage(QWidget):
         ax1.legend(fontsize=8)
         ax1.tick_params(axis='both', which='major', labelsize=8)
         self.canvas1.draw()
+
+        stability_data, envelope = analyzer.analyze_stability(close_prices, years_list)
         
         # 更新稳定性图表
+        stability_labels = [f'{y}年: {r*100:.1f}' for y,r in stability_data['growth_scores']]
         self.figure2.clear()
         ax2 = self.figure2.add_subplot(111)
         #ax2.plot(window_df['Close'], label='原始价格')
@@ -741,6 +754,25 @@ class EnvelopeAnalysisPage(QWidget):
         ax2.tick_params(axis='both', which='major', labelsize=8)
         ax2.legend(fontsize=8)
         self.canvas2.draw()
+
+        stability_data, envelope = analyzer.analyze_stability(close_prices, years_list, "low_rate2")
+        
+        # 更新稳定性图表
+        stability_labels = [f'{y}年: {r*100:.1f}' for y,r in stability_data['growth_scores']]
+        self.figure3.clear()
+        ax3 = self.figure3.add_subplot(111)
+        #ax2.plot(window_df['Close'], label='原始价格')
+        ax3.plot(window_df.index, envelope, 'g--', label='包络线')
+        ax3.scatter(window_df.index[stability_data['peaks']],  # 使用日期索引
+                   envelope[stability_data['peaks']], 
+                   marker='^', color='b')
+        ax3.scatter(window_df.index[stability_data['valleys']],  # 使用日期索引
+                   envelope[stability_data['valleys']],
+                   marker='v', color='r')
+        ax3.set_title(f'成长性得分: {stability_labels}', fontsize=10)
+        ax3.tick_params(axis='both', which='major', labelsize=8)
+        ax3.legend(fontsize=8)
+        self.canvas3.draw() 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
