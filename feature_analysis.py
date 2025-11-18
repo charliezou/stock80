@@ -105,6 +105,20 @@ class FeatureAnalyzer:
 
         k=np.append(peaks,valleys)
         k.sort()
+        if len(k) == 0:
+            return {
+                'growth_score': 0,
+                'peaks_values':[],
+                'valleys_values':[],
+                'peaks_rate':[],
+                'valleys_rate':[],
+                'peaks_len':[],
+                'peaks_avg_len':0,
+                'peaks_std_len':0,
+                'valleys_len':[],
+                'valleys_avg_len':0,
+                'valleys_std_len':0
+            }
         if (k[0] != 0):
             k = np.append(np.asarray([0]),k)
         if (k[-1] != envelope_len-1):
@@ -175,12 +189,12 @@ class FeatureAnalyzer:
             returns.append((years,annualized_return))
         return returns
 
-    def analyze_stability(self, price_data: np.ndarray, years_list, low_rate_type=1) -> dict:
+    def analyze_stability(self, price_data: np.ndarray, years_list, low_rate_type="low_rate") -> dict:
         '''稳定性分析算法'''
         envelope = self.extract_hilbert_envelope(price_data)
-        if low_rate_type == 1:
+        if low_rate_type == "low_rate":
             low_rate = self.low_rate
-        else:
+        elif low_rate_type == "low_rate2":
             low_rate = self.low_rate2
         extreme_data = self.find_extrema_in_envelope(envelope, low_rate = low_rate)
         growth_data = self.calculate_growth_score_v2(envelope, extreme_data['peaks'], extreme_data['valleys'],years_list)
