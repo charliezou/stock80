@@ -31,9 +31,9 @@ def test_envelope_strategy():
     
     # 测试股票代码
     test_stocks = [
-        ('000001', 'A-SH', '平安银行'),
-        ('000002', 'A-SH', '万科A'),
-        ('600000', 'A-SH', '浦发银行'),
+        #('000001', 'A-SH', '平安银行'),
+        #('000002', 'A-SH', '万科A'),
+        #('600000', 'A-SH', '浦发银行'),
         ('600036', 'A-SH', '招商银行')
     ]
     
@@ -43,8 +43,7 @@ def test_envelope_strategy():
         print("-" * 30)
         
         try:
-            
-            
+                        
             # 生成买卖信号
             signals_df, envelope_history, extreme_data_history = strategy.generate_signals(stock_code, market)
             
@@ -101,12 +100,12 @@ def test_date_range():
     strategy = EnvelopeStrategy()
     
     # 测试股票代码
-    stock_code = '000001'
+    stock_code = '600036'
     market = 'A-SH'
     
     # 设置日期范围
-    start_date = '2020-01-01'
-    end_date = '2022-12-31'
+    start_date = '2019-01-04'
+    end_date = '2025-11-07'
     
     print(f"测试股票: {stock_code} ({market})")
     print(f"日期范围: {start_date} 至 {end_date}")
@@ -212,13 +211,13 @@ def test_position_logic():
 
 if __name__ == "__main__":
     # 测试仓位判断逻辑
-    test_position_logic()
+    #test_position_logic()
     
     # 测试日期范围功能
     test_date_range()
     
     # 测试包络线趋势跟踪策略
-    test_envelope_strategy()
+    #test_envelope_strategy()
     
     print("\n" + "=" * 50)
     print("测试完成")

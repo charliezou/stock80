@@ -88,7 +88,7 @@ class EnvelopeStrategy:
         
         return 0.0, "未知情况"
     
-    def generate_signals(self, stock_code, market='A-SH', start_date=None, end_date=None):
+    def generate_signals(self, stock_code, market='A-SH', start_date=None, end_date=None, df=None):
         """
         生成买卖信号
         
@@ -105,17 +105,26 @@ class EnvelopeStrategy:
         """
         
         # 获取股票价格数据
-        df = self.data_manager.get_stock_weekly_data(stock_code, market)
-        if df.empty:
-            raise ValueError(f"无法获取股票{stock_code}的数据")
+        if df is None:
+            df = self.data_manager.get_stock_weekly_data(stock_code)    
+            if df.empty:
+                raise ValueError(f"无法获取股票{stock_code}的数据")
+
+        if start_date is None:
+            start_date = df.index[-min(260, len(df)-260)]
+        if end_date is None:
+            end_date = df.index[-1]
         
         # 应用日期过滤
         start_index = 0
-        end_index = len(df) - 1
+        end_index = len(df) -1
         if start_date is not None:
             start_index = df.index.get_loc(start_date)
         if end_date is not None:
             end_index = df.index.get_loc(end_date)
+
+        print(f"start_index: {start_index}")
+        print(f"end_index: {end_index}")
             
         # 初始化信号列表和历史数据
         signals = []
@@ -128,64 +137,45 @@ class EnvelopeStrategy:
         for i in range(start_index, end_index+1):
             date = df.index[i]
             price = df['Close'].iloc[i]
-            
-            # 确保有足够的数据点来计算包络线（至少需要20个数据点）
-            if i < 20:
-                # 对于早期数据点，使用空的历史记录
-                envelope_history.append(np.array([]))
-                extreme_data_history.append({
-                    'extreme_data': {'peaks': [], 'valleys': []},
-                    'extreme_data2': {'peaks': [], 'valleys': []}
-                })
-                continue
-            
+                       
             # 获取到当前时间点为止的所有价格数据
-            current_prices = df['Close'].iloc[:i].values
+            current_prices = df['Close'].iloc[:i+1].values
+            if (price != current_prices[-1]):
+                print(f"error----")
+                       
+            # 动态计算包络线
+            current_envelope = self.analyzer.extract_hilbert_envelope(current_prices)
             
-            try:
-                # 动态计算包络线
-                current_envelope = self.analyzer.extract_hilbert_envelope(current_prices)
-                
-                # 动态计算极值点
-                current_extreme_data = self.analyzer.find_extrema_in_envelope(current_envelope, low_rate=self.analyzer.low_rate)
-                current_extreme_data2 = self.analyzer.find_extrema_in_envelope(current_envelope, low_rate=self.analyzer.low_rate2)
-                
-                # 保存历史数据
-                envelope_history.append(current_envelope)
-                extreme_data_history.append({
-                    'extreme_data': current_extreme_data,
-                    'extreme_data2': current_extreme_data2
-                })
-                
-                # 每个时间点都判断仓位
-                position, signal_type = self.get_position(current_extreme_data, current_extreme_data2)
-                
-                # 记录信号（只在仓位变化时记录）
-                if position != last_position:
-                    if position > last_position:
-                        action = "买入"
-                    elif position < last_position:
-                        action = "卖出"
-                        
-                    signals.append({
-                        'date': date,
-                        'price': price,
-                        'position': position,
-                        'last_position': last_position,
-                        'action': action,
-                        'signal_type': signal_type
-                    })
-                    last_position = position
+            # 动态计算极值点
+            current_extreme_data = self.analyzer.find_extrema_in_envelope(current_envelope, low_rate=self.analyzer.low_rate)
+            current_extreme_data2 = self.analyzer.find_extrema_in_envelope(current_envelope, low_rate=self.analyzer.low_rate2)
+            
+            # 保存历史数据
+            envelope_history.append(current_envelope)
+            extreme_data_history.append({
+                'extreme_data': current_extreme_data,
+                'extreme_data2': current_extreme_data2
+            })
+            
+            # 每个时间点都判断仓位
+            position, signal_type = self.get_position(current_extreme_data, current_extreme_data2)
+            
+            # 记录信号（只在仓位变化时记录）
+            if position != last_position:
+                if position > last_position:
+                    action = "买入"
+                elif position < last_position:
+                    action = "卖出"
                     
-            except Exception as e:
-                # 如果计算失败，记录错误并跳过这个时间点
-                print(f"计算包络线时出错，日期 {date}: {str(e)}")
-                envelope_history.append(np.array([]))
-                extreme_data_history.append({
-                    'extreme_data': {'peaks': [], 'valleys': []},
-                    'extreme_data2': {'peaks': [], 'valleys': []}
+                signals.append({
+                    'date': date,
+                    'price': price,
+                    'position': position,
+                    'last_position': last_position,
+                    'action': action,
+                    'signal_type': signal_type
                 })
-                continue
+                last_position = position
         
         # 转换为DataFrame
         signals_df = pd.DataFrame(signals)
@@ -208,19 +198,29 @@ class EnvelopeStrategy:
             backtest_results: 回测结果字典
         """
         
+        
+        
         # 获取股票价格数据
         df = self.data_manager.get_stock_weekly_data(stock_code)
         if df.empty:
             raise ValueError(f"无法获取股票{stock_code}的数据")
 
-        # 获取买卖信号
-        signals_df, envelope_history, extreme_data_history = self.generate_signals(stock_code, market, start_date, end_date)
-        
         # 应用日期过滤
-        if start_date is not None:
-            df = df[df.index >= start_date]
-        if end_date is not None:
-            df = df[df.index <= end_date]
+        if start_date is None:
+            start_date = df.index[-min(260, len(df)-260)]
+        if end_date is None:
+            end_date = df.index[-1]
+
+        start_index = df.index.get_loc(start_date)
+        df = df[max(0,start_index-260):]
+
+        df = df[df.index <= end_date]
+
+        # 获取买卖信号
+        signals_df, envelope_history, extreme_data_history = self.generate_signals(stock_code, market, start_date, end_date, df)
+        
+        # 应用日期过滤        
+        backtest_df = df[(df.index >= start_date) & (df.index <= end_date)]
         
         # 初始化回测结果
         capital = initial_capital
@@ -232,9 +232,9 @@ class EnvelopeStrategy:
         trades = []  # 交易记录
         
         # 遍历每个交易日
-        for i in range(len(df)):
-            date = df.index[i]
-            price = df['Close'].iloc[i]
+        for i in range(len(backtest_df)):
+            date = backtest_df.index[i]
+            price = backtest_df['Close'].iloc[i]
             
             # 检查是否有信号
             signal = signals_df[signals_df['date'] == date]
@@ -356,7 +356,10 @@ class EnvelopeStrategy:
             'extreme_data': last_extreme_data,
             'extreme_data2': last_extreme_data2,
             'dates': df.index,
-            'prices': df['Close'].values
+            'prices': df['Close'].values,
+            'backtest_df': backtest_df,
+            'backtest_dates': backtest_df.index,
+            'backtest_prices': backtest_df['Close'].values,
         }
         
         return backtest_results
@@ -369,50 +372,70 @@ class EnvelopeStrategy:
             backtest_results: 回测结果字典
             figsize: 图表大小
         """
-        fig, axes = plt.subplots(4, 1, figsize=figsize)
+        fig, axes = plt.subplots(6, 1, figsize=figsize)
         
         # 子图1：价格和包络线
         ax1 = axes[0]
+
         ax1.plot(backtest_results['dates'], backtest_results['prices'], label='价格', color='blue')
-        ax1.plot(backtest_results['dates'], backtest_results['envelope'], label='包络线', color='orange', alpha=0.7)
+        ax1.set_title(f"{backtest_results['stock_code']} - 价格线")
+        ax1.legend()
+        
+        ax2 = axes[1]
+        ax2.plot(backtest_results['dates'], backtest_results['envelope'], label='包络线', color='orange', alpha=0.7)
         
         # 标记极值点
         peaks = backtest_results['extreme_data']['peaks']
         valleys = backtest_results['extreme_data']['valleys']
+        
+        if len(peaks) > 0:
+            ax2.scatter(backtest_results['dates'][peaks], backtest_results['prices'][peaks], 
+                       color='red', marker='v', label=f'低阈值峰点({len(peaks)})')
+        if len(valleys) > 0:
+            ax2.scatter(backtest_results['dates'][valleys], backtest_results['prices'][valleys], 
+                       color='green', marker='^', label=f'低阈值谷点({len(valleys)})')
+        ax2.set_title(f"{backtest_results['stock_code']} - 包络线1")
+        ax2.legend()
+
+        ax3 = axes[2]
+        ax3.plot(backtest_results['dates'], backtest_results['envelope'], label='包络线', color='orange', alpha=0.7)
+        
+        # 标记极值点
         peaks2 = backtest_results['extreme_data2']['peaks']
         valleys2 = backtest_results['extreme_data2']['valleys']
         
-        if len(peaks) > 0:
-            ax1.scatter(backtest_results['dates'][peaks], backtest_results['prices'][peaks], 
-                       color='red', marker='v', label=f'低阈值峰点({len(peaks)})')
-        if len(valleys) > 0:
-            ax1.scatter(backtest_results['dates'][valleys], backtest_results['prices'][valleys], 
-                       color='green', marker='^', label=f'低阈值谷点({len(valleys)})')
         if len(peaks2) > 0:
-            ax1.scatter(backtest_results['dates'][peaks2], backtest_results['prices'][peaks2], 
+            ax3.scatter(backtest_results['dates'][peaks2], backtest_results['prices'][peaks2], 
                        color='darkred', marker='v', label=f'高阈值峰点({len(peaks2)})')
         if len(valleys2) > 0:
-            ax1.scatter(backtest_results['dates'][valleys2], backtest_results['prices'][valleys2], 
+            ax3.scatter(backtest_results['dates'][valleys2], backtest_results['prices'][valleys2], 
                        color='darkgreen', marker='^', label=f'高阈值谷点({len(valleys2)})')
+        ax3.set_title(f"{backtest_results['stock_code']} - 包络线2")
+        ax3.legend()
+
+        ax4 = axes[3]
+
+        ax4.plot(backtest_results['backtest_dates'], backtest_results['backtest_prices'], label='价格', color='blue')
+        ax4.set_title(f"{backtest_results['stock_code']} - 价格线")
+        ax4.legend()
         
-        ax1.set_title(f"{backtest_results['stock_code']} - 价格与包络线")
-        ax1.legend()
+        
         
         # 子图2：仓位变化
-        ax2 = axes[1]
-        ax2.plot(backtest_results['dates'], backtest_results['position_history'], label='仓位', color='purple')
-        ax2.set_ylabel('仓位比例')
-        ax2.set_ylim(-0.1, 1.1)
-        ax2.set_title("仓位变化")
-        ax2.legend()
+        ax5 = axes[4]
+        ax5.plot(backtest_results['backtest_dates'], backtest_results['position_history'], label='仓位', color='purple')
+        ax5.set_ylabel('仓位比例')
+        ax5.set_ylim(-0.1, 1.1)
+        ax5.set_title("仓位变化")
+        ax5.legend()
         
         # 子图3：组合价值
-        ax3 = axes[2]
-        ax3.plot(backtest_results['dates'], backtest_results['portfolio_value'], label='策略组合价值', color='green')
+        ax6 = axes[5]
+        ax6.plot(backtest_results['backtest_dates'], backtest_results['portfolio_value'], label='策略组合价值', color='green')
         
         # 计算买入并持有策略的价值
-        buy_hold_value = backtest_results['initial_capital'] * (backtest_results['prices'] / backtest_results['prices'][0])
-        ax3.plot(backtest_results['dates'], buy_hold_value, label='买入持有价值', color='gray', alpha=0.7)
+        buy_hold_value = backtest_results['initial_capital'] * (backtest_results['backtest_prices'] / backtest_results['backtest_prices'][0])
+        ax6.plot(backtest_results['backtest_dates'], buy_hold_value, label='买入持有价值', color='gray', alpha=0.7)
         
         # 标记买卖点
         trades = backtest_results['trades']
@@ -421,17 +444,15 @@ class EnvelopeStrategy:
             sell_trades = trades[trades['action'] == '卖出']
             
             if not buy_trades.empty:
-                ax3.scatter(buy_trades['date'], buy_trades['value'], color='red', marker='^', label='买入')
+                ax6.scatter(buy_trades['date'], buy_trades['value'], color='red', marker='^', label='买入')
             if not sell_trades.empty:
-                ax3.scatter(sell_trades['date'], sell_trades['value'], color='blue', marker='v', label='卖出')
+                ax6.scatter(sell_trades['date'], sell_trades['value'], color='blue', marker='v', label='卖出')
         
-        ax3.set_ylabel('组合价值')
-        ax3.set_title("组合价值变化")
-        ax3.legend()
+        ax6.set_ylabel('组合价值')
+        ax6.set_title("组合价值变化")
+        ax6.legend()
         
-        # 子图4：回测指标
-        ax4 = axes[3]
-        ax4.axis('off')
+        
         
         # 显示回测指标
         metrics_text = f"""
@@ -453,8 +474,7 @@ class EnvelopeStrategy:
         胜率: {backtest_results['win_rate']:.2%}
         """
         
-        ax4.text(0.1, 0.5, metrics_text, transform=ax4.transAxes, fontsize=10, 
-                verticalalignment='center', fontfamily='monospace')
         
-        plt.tight_layout()
+        print(metrics_text)
+        plt.tight_layout(rect=[0, 1, 1, 1])
         return fig
