@@ -105,9 +105,10 @@ class FeatureAnalyzer:
 
         k=np.append(peaks,valleys)
         k.sort()
-        if len(k) == 0:
+        if len(k) < 2:
             return {
                 'growth_score': 0,
+                'growth_scores':[],
                 'peaks_values':[],
                 'valleys_values':[],
                 'peaks_rate':[],

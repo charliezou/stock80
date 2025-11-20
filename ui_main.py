@@ -12,6 +12,8 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import time
 
+from configparser import ConfigParser
+
 # 设置全局字体为支持中文的字体
 matplotlib.rcParams['font.family'] = ['Songti SC', 'Heiti TC', 'sans-serif']
 matplotlib.rcParams['font.size'] = 8  # 字体大小
@@ -23,6 +25,9 @@ plt.rcParams['axes.prop_cycle'] = plt.cycler(color=plt.cm.cividis.colors)
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        self.config = ConfigParser()
+        self.config.read('config.ini')
         
         # 窗口基本设置
         self.setWindowTitle("智能股票分析系统")
@@ -146,23 +151,20 @@ class DataManagementPage(QWidget):
         
         # 从config.ini读取股票代码列表
         try:
-            import configparser
-            config = configparser.ConfigParser()
-            config.read('config.ini')
             
-            if 'StockLists' not in config:
+            if 'StockLists' not in self.config:
                 QMessageBox.warning(self, '错误', '配置文件中没有StockLists配置段')
                 return  
 
             stock_list_key = f"{market}_{config_name}"
-            if config_name.strip() == "" or stock_list_key not in config['StockLists']:
+            if config_name.strip() == "" or stock_list_key not in self.config['StockLists']:
                 # 尝试使用市场名称作为键
-                if market not in config['StockLists']:
+                if market not in self.config['StockLists']:
                     QMessageBox.warning(self, '错误', f'配置文件中没有找到{market}市场的股票代码列表')
                     return
-                stock_codes_str = config['StockLists'][market]
+                stock_codes_str = self.config['StockLists'][market]
             else:
-                stock_codes_str = config['StockLists'][stock_list_key]
+                stock_codes_str = self.config['StockLists'][stock_list_key]
             
             # 解析股票代码
             stock_codes = [code.strip() for code in stock_codes_str.split(',') if code.strip()]
@@ -602,7 +604,7 @@ class EnvelopeAnalysisPage(QWidget):
         self.current_stock_data = None
         self.current_stock_code = None
         self.window_start_index = 0  # 当前520周窗口的起始索引
-        self.window_size = 260  # 默认窗口长度
+        self.window_size = int(self.data_mgr.config['envelope']['window_size'])  # 默认窗口长度
         self.load_stock_list()
     
     def keyPressEvent(self, event):
@@ -706,12 +708,14 @@ class EnvelopeAnalysisPage(QWidget):
         window_df = self.current_stock_data.iloc[start_idx:end_idx]
 
         #window_df = self.current_stock_data.iloc[-520:]
+
+        #print(window_df.index[0])
         
         # 更新窗口信息显示
         start_date = window_df.index[0].strftime('%Y-%m-%d')
         end_date = window_df.index[-1].strftime('%Y-%m-%d')
         
-        print(f"当前窗口:  ({start_date} 至 {end_date})")
+        #print(f"当前窗口:  ({start_date} 至 {end_date})")
         
         # 调用特征分析方法
         analyzer = FeatureAnalyzer()
