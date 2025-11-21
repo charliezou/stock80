@@ -105,6 +105,16 @@ class FeatureAnalyzer:
 
         k=np.append(peaks,valleys)
         k.sort()
+
+        lastchange = 0
+        if len(k) > 0:
+            if len(peaks) > 0 & peaks[-1] == k[-1]:
+                min_value = np.min(envelope[peaks[-1]:])
+                lastchange = (envelope[-1] - min_value) / min_value
+            else:
+                max_value = np.max(envelope[valleys[-1]:])
+                lastchange = (envelope[-1] - max_value) / max_value
+
         if len(k) < 2:
             return {
                 'growth_score': 0,
@@ -118,7 +128,9 @@ class FeatureAnalyzer:
                 'peaks_std_len':0,
                 'valleys_len':[],
                 'valleys_avg_len':0,
-                'valleys_std_len':0
+                'valleys_std_len':0,
+                'lastvalue':envelope[-1],
+                'lastchange':lastchange
             }
         if (k[0] != 0):
             k = np.append(np.asarray([0]),k)
@@ -175,7 +187,9 @@ class FeatureAnalyzer:
             'peaks_std_len':np.std(peaks_len),
             'valleys_len':valleys_len,
             'valleys_avg_len':np.mean(valleys_len),
-            'valleys_std_len':np.std(valleys_len)
+            'valleys_std_len':np.std(valleys_len),
+            'lastvalue':envelope[-1],
+            'lastchange':lastchange
         }
 
     def calculate_annualized_returns(self, prices, years_list):

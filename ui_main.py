@@ -744,6 +744,8 @@ class EnvelopeAnalysisPage(QWidget):
         
         # 更新稳定性图表
         stability_labels = [f'{y}年: {r*100:.1f}' for y,r in stability_data['growth_scores']]
+        add_labels = [f'lastvalue: {stability_data["lastvalue"]:.2f}', f'lastchange: {stability_data["lastchange"]:.2f}']
+        stability_labels.extend(add_labels)
         self.figure2.clear()
         ax2 = self.figure2.add_subplot(111)
         #ax2.plot(window_df['Close'], label='原始价格')
@@ -763,6 +765,8 @@ class EnvelopeAnalysisPage(QWidget):
         
         # 更新稳定性图表
         stability_labels = [f'{y}年: {r*100:.1f}' for y,r in stability_data['growth_scores']]
+        add_labels = [f'lastvalue: {stability_data["lastvalue"]:.2f}', f'lastchange: {stability_data["lastchange"]:.2f}']
+        stability_labels.extend(add_labels)
         self.figure3.clear()
         ax3 = self.figure3.add_subplot(111)
         #ax2.plot(window_df['Close'], label='原始价格')
