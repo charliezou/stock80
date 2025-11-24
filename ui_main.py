@@ -1,4 +1,5 @@
 import sys
+import numpy as np
 from PyQt5.QtCore import Qt, QDate, QDateTime
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout,
                             QLabel, QPushButton, QFileDialog, QHBoxLayout,QListWidget,QInputDialog,QMessageBox,QListWidgetItem,
@@ -302,13 +303,29 @@ class TrendAnalysisPage(QWidget):
         if event.key() == Qt.Key_Left:
             self.current_cache_index -= 1
             if self.current_cache_index <= -1:
-                self.current_cache_index = len(self.analysis_cache)-1
+                self.current_cache_index = 0
             self._display_cached_result()
         elif event.key() == Qt.Key_Right:
             self.current_cache_index += 1
             if self.current_cache_index >= len(self.analysis_cache):
+                self.current_cache_index = len(self.analysis_cache)-1
+            self._display_cached_result()
+        elif event.key() == Qt.Key_A:
+            self.current_cache_index -= 4
+            if self.current_cache_index <= -1:
                 self.current_cache_index = 0
             self._display_cached_result()
+        elif event.key() == Qt.Key_D:
+            self.current_cache_index += 4
+            if self.current_cache_index >= len(self.analysis_cache):
+                self.current_cache_index = len(self.analysis_cache)-1
+        elif event.key() == Qt.Key_Q:
+            self.current_cache_index = 0
+            self._display_cached_result()
+        elif event.key() == Qt.Key_E:
+            self.current_cache_index = len(self.analysis_cache)-1
+            self._display_cached_result()
+        
         else:
             super().keyPressEvent(event)
 
@@ -400,15 +417,19 @@ class TrendAnalysisPage(QWidget):
             # 获取分析结果
             stock_code = item.stock_code
             market = item.market
-            dt = self.data_mgr.get_stock_weekly_data(stock_code).iloc[-1000:]
+            dt = self.data_mgr.get_stock_weekly_data(stock_code)
+            dt = self.data_mgr.calculate_volume_ratio(dt)
+            dt = dt.iloc[-1000:]
             close_prices = dt['Close']
             volume = dt['Volume']
+            volume_ratio = dt['Volume_Ratio']
             
             engine = AnalysisEngine()
             analysis_result = engine.find_patterns_and_forecast(
                 close_prices,
                 market=market,
                 volume=volume,
+                volume_ratio=volume_ratio,
                 analysis_date=analysis_date
             )
             
@@ -501,8 +522,11 @@ class FeatureAnalysisPage(QWidget):
         stock_code = item.stock_code
         
         # 从DataManager获取完整数据
-        df = self.data_mgr.get_stock_weekly_data(stock_code).iloc[-520:]  # 取最近520周数据
-        
+        df = self.data_mgr.get_stock_weekly_data(stock_code)
+        df = self.data_mgr.calculate_volume_ratio(df)
+        df = df.iloc[-520:]  # 取最近520周数据
+
+
         # 调用特征分析方法
         analyzer = FeatureAnalyzer()
         
@@ -650,6 +674,8 @@ class EnvelopeAnalysisPage(QWidget):
         
         # 从DataManager获取完整数据
         df = self.data_mgr.get_stock_weekly_data(stock_code)
+        df = self.data_mgr.calculate_volume_ratio(df)
+
         self.current_stock_data = df
         
         # 初始化窗口位置为最近104周
@@ -707,15 +733,11 @@ class EnvelopeAnalysisPage(QWidget):
         end_idx = start_idx + self.window_size
         window_df = self.current_stock_data.iloc[start_idx:end_idx]
 
-        #window_df = self.current_stock_data.iloc[-520:]
-
-        #print(window_df.index[0])
         
         # 更新窗口信息显示
         start_date = window_df.index[0].strftime('%Y-%m-%d')
         end_date = window_df.index[-1].strftime('%Y-%m-%d')
         
-        #print(f"当前窗口:  ({start_date} 至 {end_date})")
         
         # 调用特征分析方法
         analyzer = FeatureAnalyzer()
@@ -728,23 +750,55 @@ class EnvelopeAnalysisPage(QWidget):
         annual_returns = analyzer.calculate_annualized_returns(close_prices, years_list)
         
         
-        # 在成长性图表标题显示年化率
+        # 计算量比
+        volume_ratio = window_df['Volume_Ratio'].values
+        
+        # 在成长性图表标题显示年化率和量比
         return_labels = [f'{y}年: {r*100:.1f}%' for y,r in annual_returns]
+        return_labels.append(f'量比: {volume_ratio[-1]:.2f}')
 
         # 更新成长性图表
         self.figure1.clear()
         ax1 = self.figure1.add_subplot(111)
-        ax1.plot(window_df['Close'], label='收盘价')
-        ax1.set_title(f'年化收益率: {return_labels}', fontsize=10)
-        ax1.legend(fontsize=8)
-        ax1.tick_params(axis='both', which='major', labelsize=8)
+        
+        # 创建双Y轴图表
+        ax1_price = ax1
+        ax1_volume = ax1_price.twinx()
+        
+        # 绘制收盘价线
+        ax1_price.plot(window_df.index, window_df['Close'], 'b-', label='收盘价', linewidth=1.5)
+        ax1_price.set_ylabel('价格', color='b', fontsize=8)
+        ax1_price.tick_params(axis='y', labelcolor='b', labelsize=7)
+        
+        
+        
+        # 绘制量比柱状图
+        bars = ax1_volume.bar(window_df.index, volume_ratio, alpha=0.3, color='orange', width=5, label='量比')
+        ax1_volume.set_ylabel('量比', color='orange', fontsize=8)
+        ax1_volume.tick_params(axis='y', labelcolor='orange', labelsize=7)
+        
+        # 设置量比Y轴范围
+        max_volume_ratio = max(volume_ratio)
+        ax1_volume.set_ylim(0, max_volume_ratio * 1.2)
+        
+        # 添加图例
+        lines1, labels1 = ax1_price.get_legend_handles_labels()
+        lines2, labels2 = ax1_volume.get_legend_handles_labels()
+        ax1_price.legend(lines1 + lines2, labels1 + labels2, fontsize=7, loc='upper left')
+        
+        ax1_price.set_title(f'年化收益率: {return_labels}', fontsize=10)
+        ax1_price.tick_params(axis='both', which='major', labelsize=7)
+        
+        # 自动调整日期显示
+        plt.setp(ax1_price.xaxis.get_majorticklabels(), rotation=45, ha='right')
+        
         self.canvas1.draw()
 
         stability_data, envelope = analyzer.analyze_stability(close_prices, years_list)
         
         # 更新稳定性图表
         stability_labels = [f'{y}年: {r*100:.1f}' for y,r in stability_data['growth_scores']]
-        add_labels = [f'lastvalue: {stability_data["lastvalue"]:.2f}', f'lastchange: {stability_data["lastchange"]:.2f}']
+        add_labels = [f'extrema: {stability_data["last_extrema_value"]:.1f}', f'value: {stability_data["lastvalue"]:.1f}',f'change: {stability_data["lastchange"]:.1f}%']
         stability_labels.extend(add_labels)
         self.figure2.clear()
         ax2 = self.figure2.add_subplot(111)
@@ -765,7 +819,7 @@ class EnvelopeAnalysisPage(QWidget):
         
         # 更新稳定性图表
         stability_labels = [f'{y}年: {r*100:.1f}' for y,r in stability_data['growth_scores']]
-        add_labels = [f'lastvalue: {stability_data["lastvalue"]:.2f}', f'lastchange: {stability_data["lastchange"]:.2f}']
+        add_labels = [f'extrema: {stability_data["last_extrema_value"]:.1f}', f'value: {stability_data["lastvalue"]:.1f}',f'change: {stability_data["lastchange"]:.1f}%']
         stability_labels.extend(add_labels)
         self.figure3.clear()
         ax3 = self.figure3.add_subplot(111)

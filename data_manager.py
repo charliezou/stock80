@@ -56,6 +56,13 @@ class StockDataManager:
             'Volume': 'sum',
         }).dropna()
 
+    def calculate_volume_ratio(self, data, window_size=5):
+        
+        mean_previous_volume = data['Volume'].rolling(window=window_size, min_periods=1).mean().shift(1)
+        data['Volume_Ratio'] = data['Volume'] / mean_previous_volume
+              
+        return data
+
     def download_data(self, codes: List[Tuple[str, str]]):
         success_codes = []
         '''下载股票数据并存储'''

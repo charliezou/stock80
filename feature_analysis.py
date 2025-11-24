@@ -98,6 +98,7 @@ class FeatureAnalyzer:
             'valleys_std_len':np.std(valleys_len)
         }
 
+    
     def calculate_growth_score_v2(self, envelope, peaks, valleys, years_list):
         #计算成长性分数
 
@@ -107,13 +108,18 @@ class FeatureAnalyzer:
         k.sort()
 
         lastchange = 0
+        last_extrema_value = 0
         if len(k) > 0:
-            if len(peaks) > 0 & peaks[-1] == k[-1]:
+            if len(peaks) > 0 and peaks[-1] == k[-1]:
                 min_value = np.min(envelope[peaks[-1]:])
-                lastchange = (envelope[-1] - min_value) / min_value
-            else:
+                lastchange = (envelope[-1] - min_value) / min_value *100
+            elif len(valleys) > 0 and valleys[-1] == k[-1]:
                 max_value = np.max(envelope[valleys[-1]:])
-                lastchange = (envelope[-1] - max_value) / max_value
+                lastchange = (envelope[-1] - max_value) / max_value *100
+            else:
+                print(peaks, valleys, k)
+                lastchange = 0
+            last_extrema_value = envelope[k[-1]]
 
         if len(k) < 2:
             return {
@@ -130,7 +136,8 @@ class FeatureAnalyzer:
                 'valleys_avg_len':0,
                 'valleys_std_len':0,
                 'lastvalue':envelope[-1],
-                'lastchange':lastchange
+                'lastchange':lastchange,
+                'last_extrema_value':last_extrema_value
             }
         if (k[0] != 0):
             k = np.append(np.asarray([0]),k)
@@ -189,7 +196,8 @@ class FeatureAnalyzer:
             'valleys_avg_len':np.mean(valleys_len),
             'valleys_std_len':np.std(valleys_len),
             'lastvalue':envelope[-1],
-            'lastchange':lastchange
+            'lastchange':lastchange,
+            'last_extrema_value':last_extrema_value
         }
 
     def calculate_annualized_returns(self, prices, years_list):

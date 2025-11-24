@@ -18,6 +18,7 @@ class AnalysisEngine:
         self.days_to_forecast = self.config.getint('Analysis', 'days_to_forecast', fallback=8)
         self.use_returns = self.config.getboolean('Analysis', 'use_returns', fallback=False)
         self.use_volume = self.config.getboolean('Analysis', 'use_volume', fallback=False)
+        self.use_volume_ratio = self.config.getboolean('Analysis', 'use_volume_ratio', fallback=False)
         self.scale_method = self.config.get('Analysis', 'scale_method', fallback='first')
         self.forecast_cal_method = self.config.get('Analysis', 'forecast_cal_method', fallback='sigmean')
         self.index_distance = self.config.getint('Analysis', 'index_distance', fallback=8)
@@ -42,6 +43,8 @@ class AnalysisEngine:
             market: self.data_mgr.get_index_weekly_data(symbol)
             for market, symbol in index_map.items()
         }
+
+
 
     def scale_series(self, series):
         """对numpy序列进行缩放"""
@@ -69,7 +72,7 @@ class AnalysisEngine:
         return distance
 
 
-    def retrieve_similar_patterns(self, series, market=None, volume=None):
+    def retrieve_similar_patterns(self, series, market=None, volume=None, volume_ratio=None):
         if self.use_returns:
             series = series.pct_change(1)
                     
@@ -80,6 +83,11 @@ class AnalysisEngine:
                 volume = volume.pct_change(1)
             volume_segment = volume[-self.window_size:].values
             current_segment = np.column_stack((current_segment, volume_segment))
+
+        # 添加量比数据
+        if self.use_volume_ratio and volume_ratio is not None:
+            volume_ratio_segment = volume_ratio[-self.window_size:].values
+            current_segment = np.column_stack((current_segment, volume_ratio_segment))
 
         if market is not None:
             market_data = self.broad_indices.get(market)      
@@ -101,6 +109,11 @@ class AnalysisEngine:
             if self.use_volume and volume is not None:
                 volume_segment = volume[index: index + self.window_size].values
                 historical_segment = np.column_stack((historical_segment, volume_segment))
+
+            # 为历史数据添加量比数据
+            if self.use_volume_ratio and volume_ratio is not None:
+                historical_volume_ratio = volume_ratio[index: index + self.window_size].values
+                historical_segment = np.column_stack((historical_segment, historical_volume_ratio))
 
             if self.use_broad_market_index and market_data is not None:
                 index_segment = index_series[index: index + self.window_size].values
@@ -165,7 +178,7 @@ class AnalysisEngine:
 
         return forecast_returns, forecast_prices
 
-    def find_patterns_and_forecast(self, close_prices, market=None, volume=None, analysis_date=None):
+    def find_patterns_and_forecast(self, close_prices, market=None, volume=None, volume_ratio=None, analysis_date=None):
 
         if analysis_date is not None:
             before_prices = close_prices[close_prices.index<=analysis_date]
@@ -174,9 +187,13 @@ class AnalysisEngine:
             before_prices = close_prices
             after_prices = None
         if self.use_volume and volume is not None:
-            volume = volume[volume.index<=analysis_date]
+            if analysis_date is not None:
+                volume = volume[volume.index<=analysis_date]
+        if self.use_volume_ratio and volume_ratio is not None:
+            if analysis_date is not None:
+                volume_ratio = volume_ratio[volume_ratio.index<=analysis_date]
                 
-        matches = self.retrieve_similar_patterns(before_prices, market, volume=volume)
+        matches = self.retrieve_similar_patterns(before_prices, market, volume=volume, volume_ratio=volume_ratio)
         best_matches = self.find_best_matches(matches)
         forecast_returns, forecast_prices = self.cal_forecast(before_prices, best_matches)
         if after_prices is None or len(after_prices) == 0:
@@ -237,7 +254,7 @@ class AnalysisEngine:
         axes[1].set_xlabel("Days",fontsize=8)
         axes[1].set_ylabel("Reindexed Price",fontsize=8)
         axes[1].tick_params(axis='both', which='major', labelsize=8)
-        axes[1].legend(fontsize=8)
+        #axes[1].legend(fontsize=8)
 
 
         axes[2].plot(range(self.window_size), close_prices[-self.window_size:], color='black', linewidth=3, label="Current Price")
